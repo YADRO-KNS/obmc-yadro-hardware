@@ -1,0 +1,13 @@
+[Unit]
+Description=Hardware manager service
+After=xyz.openbmc_project.FruDevice.service
+
+[Service]
+Type=dbus
+BusName=com.yadro.HWManager
+Restart=always
+RestartSec=5
+ExecStart=/usr/bin/yadro-hw-manager
+
+[Install]
+WantedBy=multi-user.target

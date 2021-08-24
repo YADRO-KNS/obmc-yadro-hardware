@@ -1,0 +1,19 @@
+description: >
+    Chassis model taken from FRU.
+properties:
+    - name: name
+      type: string
+      description: >
+          Chassis entity name
+    - name: model
+      type: string
+      description: >
+          Chassis model name
+    - name: part_number
+      type: string
+      description: >
+          Chassis part number
+    - name: serial
+      type: string
+      description: >
+          Chassis serial number
