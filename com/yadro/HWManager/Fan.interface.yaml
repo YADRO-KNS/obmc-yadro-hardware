@@ -1,0 +1,47 @@
+description: >
+    The interface describes Fans for Yadro systems.
+properties:
+    - name: name
+      type: string
+      description: >
+          System name of the Fan (used to generate sensor name)
+    - name: pretty_name
+      type: string
+      description: >
+          Name of the Fan as we show to user
+    - name: model
+      type: string
+      description: >
+          Fan model name
+    - name: part_number
+      type: string
+      description: >
+          Fan part number
+    - name: zone
+      type: string
+      flags:
+        - readonly
+      description: >
+          Fan cooling zone passing to PID control (Main, CPU)
+    - name: connector
+      type: string
+      description: >
+          Name of connector where the Fan plugged
+    - name: tach_index_a
+      type: uint32
+      flags:
+        - readonly
+      description: >
+          Index of Fan Tach line (FIXME: refactor FANSensor to remove need of this)
+    - name: tach_index_b
+      type: uint32
+      flags:
+        - readonly
+      description: >
+          Index of Fan Tach line (use for fan pairs)
+    - name: pwm_index
+      type: uint32
+      flags:
+        - readonly
+      description: >
+          Index of Fan PWM line
