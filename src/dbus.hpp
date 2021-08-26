@@ -29,6 +29,12 @@ constexpr const char* busName = "com.yadro.HWManager";
 constexpr const char* path = "/com/yadro/hw_manager";
 } // namespace hwmgr
 
+namespace stormgr
+{
+constexpr const char* busName = "com.yadro.Storage";
+constexpr const char* path = "/com/yadro/storage";
+} // namespace stormgr
+
 namespace objmgr
 {
 constexpr const char* interface = "org.freedesktop.DBus.ObjectManager";
@@ -45,8 +51,7 @@ constexpr const char* subtree = "GetSubTree";
 
 namespace inventory
 {
-constexpr const char* pathBase =
-    "/xyz/openbmc_project/inventory/system";
+constexpr const char* pathBase = "/xyz/openbmc_project/inventory";
 constexpr const char* path =
     "/xyz/openbmc_project/inventory/system/chassis/motherboard";
 const constexpr char* interface = "xyz.openbmc_project.Inventory.Item";

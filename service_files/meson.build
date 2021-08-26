@@ -1,5 +1,6 @@
 unit_files = [
     ['yadro-hw-manager.service', ''],
+    ['yadro-storage-manager.service', ''],
 ]
 
 foreach u : unit_files

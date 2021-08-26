@@ -9,6 +9,7 @@ project('obmc-yadro-hardware', 'cpp',
 )
 
 boost = dependency('boost', required: true)
+pdi_dep = dependency('phosphor-dbus-interfaces')
 sdbusplus_dep = dependency('sdbusplus', required: true)
 sdbusplusplus_prog = find_program('sdbus++')
 sdbusgen_prog = find_program('sdbus++-gendir')
@@ -60,6 +61,20 @@ executable('yadro-hw-manager',
     dependencies: [
         boost,
         sdbusplus_dep,
+    ],
+    install: true,
+)
+
+executable('yadro-storage-manager',
+    'src/storage/main.cpp',
+    'src/storage/inventory.cpp',
+    generated_files,
+    include_directories : incdir,
+    cpp_args: cpp_args,
+    dependencies: [
+        boost,
+        sdbusplus_dep,
+        pdi_dep
     ],
     install: true,
 )
