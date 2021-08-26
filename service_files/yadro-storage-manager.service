@@ -1,0 +1,12 @@
+[Unit]
+Description=Storage manager service
+
+[Service]
+Type=dbus
+BusName=com.yadro.Storage
+Restart=always
+RestartSec=5
+ExecStart=/usr/bin/yadro-storage-manager
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,6 @@
+description: >
+    Control Hardware Manager daemon
+methods:
+    - name: Rescan
+      description: >
+          Retrigger update inventory information.
