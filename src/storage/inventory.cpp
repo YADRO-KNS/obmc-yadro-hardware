@@ -14,7 +14,7 @@
 
 using namespace phosphor::logging;
 
-static constexpr const char* inventorySubPath = "/system/chassis/";
+static constexpr const char* inventorySubPath = "/system/drive/";
 static constexpr const char* pciidsPath = "/usr/share/misc/pci.ids";
 
 static std::string pciVenorLookup(const std::string& aVendorId)
@@ -49,8 +49,8 @@ static std::string pciVenorLookup(const std::string& aVendorId)
 }
 
 StorageDrive::StorageDrive(sdbusplus::bus::bus& bus, const std::string& aName,
-                           const std::string& aPath, const std::string& aType,
-                           const std::string& aVendor,
+                           const std::string& aPath, const std::string& aProto,
+                           const std::string& aType, const std::string& aVendor,
                            const std::string& aModel,
                            const std::string& aSerial,
                            const std::string& aSizeBytes) :
@@ -69,6 +69,11 @@ StorageDrive::StorageDrive(sdbusplus::bus::bus& bus, const std::string& aName,
         bus, dbusEscape(std::string(dbus::inventory::pathBase) +
                         inventorySubPath + aName)
                  .c_str()),
+    sdbusplus::server::object::object<
+        sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::
+            Connection>(bus, dbusEscape(std::string(dbus::inventory::pathBase) +
+                                        inventorySubPath + aName)
+                                 .c_str()),
     sdbusplus::server::object::object<sdbusplus::xyz::openbmc_project::State::
                                           Decorator::server::OperationalStatus>(
         bus, dbusEscape(std::string(dbus::inventory::pathBase) +
@@ -78,6 +83,7 @@ StorageDrive::StorageDrive(sdbusplus::bus::bus& bus, const std::string& aName,
     uint64_t sizeInt = 0;
     std::string sizeStr;
     std::string manuf;
+    std::string name;
     // try to render drive size (assume 1KB = 1000B, which is common for storage
     // devices)
     if (!aSizeBytes.empty())
@@ -91,58 +97,97 @@ StorageDrive::StorageDrive(sdbusplus::bus::bus& bus, const std::string& aName,
             sizeInt = 0;
         }
 
-        size_t order = aSizeBytes.size() / 3;
-        if (aSizeBytes.size() == order * 3)
+        if (sizeInt)
         {
-            order--;
-        }
-        sizeStr = aSizeBytes.substr(0, aSizeBytes.size() - order * 3);
-        // if only one digit left, add one more digit after decimal point
-        if ((sizeStr.size() <= 1) && (aSizeBytes.size() > 1))
-        {
-            sizeStr += "." + aSizeBytes.substr(sizeStr.size(), 1);
-        }
+            size_t order = aSizeBytes.size() / 3;
+            if (aSizeBytes.size() == order * 3)
+            {
+                order--;
+            }
+            sizeStr = aSizeBytes.substr(0, aSizeBytes.size() - order * 3);
+            // if only one digit left, add one more digit after decimal point
+            if ((sizeStr.size() <= 1) && (aSizeBytes.size() > 1))
+            {
+                sizeStr += "." + aSizeBytes.substr(sizeStr.size(), 1);
+            }
 
-        switch (order)
-        {
-            case 0:
-                sizeStr += "B";
-                break;
-            case 1:
-                sizeStr += "KB";
-                break;
-            case 2:
-                sizeStr += "MB";
-                break;
-            case 3:
-                sizeStr += "GB";
-                break;
-            case 4:
-                sizeStr += "TB";
-                break;
-            case 5:
-                sizeStr += "PB";
-                break;
-            default:
-                sizeStr = "??";
-                break;
+            switch (order)
+            {
+                case 0:
+                    sizeStr += "B";
+                    break;
+                case 1:
+                    sizeStr += "KB";
+                    break;
+                case 2:
+                    sizeStr += "MB";
+                    break;
+                case 3:
+                    sizeStr += "GB";
+                    break;
+                case 4:
+                    sizeStr += "TB";
+                    break;
+                case 5:
+                    sizeStr += "PB";
+                    break;
+                default:
+                    sizeStr = std::string();
+                    break;
+            }
         }
     }
     // try to render drive manufacturer (use pci.ids database)
-    if ((!aVendor.empty()) && (aType == "NVMe"))
+    if ((!aVendor.empty()) && (aProto == "NVMe"))
     {
         manuf = pciVenorLookup(aVendor);
     }
+    // assemble drive name
+    if (!aProto.empty())
+    {
+        name += aProto + " ";
+    }
+    if (!sizeStr.empty())
+    {
+        name += sizeStr + " ";
+    }
+    name += aName;
+
+    Connection::ProtoType proto = Connection::ProtoType::Unknown;
+    if (aProto == "SATA")
+    {
+        proto = Connection::ProtoType::SATA;
+    }
+    else if (aProto == "SAS")
+    {
+        proto = Connection::ProtoType::SAS;
+    }
+    else if (aProto == "NVMe")
+    {
+        proto = Connection::ProtoType::NVMe;
+    }
+    Drive::DriveType driveType = Drive::DriveType::Unknown;
+    if (aType == "SSD")
+    {
+        driveType = Drive::DriveType::SSD;
+    }
+    else if (aType == "HDD")
+    {
+        driveType = Drive::DriveType::HDD;
+    }
 
     // xyz.openbmc_project.Inventory.Item
-    prettyName(aType + " " + sizeStr + " " + aName);
+    prettyName(name);
     present(true);
     // xyz.openbmc_project.Inventory.Item.Drive
     capacity(sizeInt);
+    type(driveType);
     // xyz.openbmc_project.Inventory.Decorator.Asset
     serialNumber(aSerial);
     manufacturer(manuf);
     model(aModel);
+    // xyz.openbmc_project.Inventory.Decorator.Connection
+    protocol(proto);
     // xyz.openbmc_project.State.Decorator.OperationalStatus
     functional(true);
 }

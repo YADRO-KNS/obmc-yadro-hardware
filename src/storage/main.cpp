@@ -38,6 +38,7 @@ class Manager : StorageManagerServer
 enum Fields
 {
     path = 0,
+    proto,
     type,
     vendor,
     model,
@@ -79,8 +80,8 @@ void Manager::rescan()
         }
         drives.emplace_back(std::make_shared<StorageDrive>(
             bus, "drive " + std::to_string(index), entryFields[path],
-            entryFields[type], entryFields[vendor], entryFields[model],
-            entryFields[serial], entryFields[sizeBytes]));
+            entryFields[proto], entryFields[type], entryFields[vendor],
+            entryFields[model], entryFields[serial], entryFields[sizeBytes]));
         index++;
     }
 }
