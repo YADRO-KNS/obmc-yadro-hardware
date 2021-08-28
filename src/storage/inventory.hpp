@@ -6,6 +6,7 @@
 #pragma once
 
 #include <xyz/openbmc_project/Inventory/Decorator/Asset/server.hpp>
+#include <xyz/openbmc_project/Inventory/Decorator/Connection/server.hpp>
 #include <xyz/openbmc_project/Inventory/Item/Drive/server.hpp>
 #include <xyz/openbmc_project/Inventory/Item/server.hpp>
 #include <xyz/openbmc_project/State/Decorator/OperationalStatus/server.hpp>
@@ -17,12 +18,16 @@ class StorageDrive :
         sdbusplus::xyz::openbmc_project::Inventory::Item::server::Drive>,
     sdbusplus::server::object::object<
         sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::Asset>,
+    sdbusplus::server::object::object<
+        sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::
+            Connection>,
     sdbusplus::server::object::object<sdbusplus::xyz::openbmc_project::State::
                                           Decorator::server::OperationalStatus>
 {
   public:
     StorageDrive(sdbusplus::bus::bus& bus, const std::string& aName,
-                 const std::string& aPath, const std::string& aType,
-                 const std::string& aVendor, const std::string& aModel,
-                 const std::string& aSerial, const std::string& aSizeBytes);
+                 const std::string& aPath, const std::string& aProto,
+                 const std::string& aType, const std::string& aVendor,
+                 const std::string& aModel, const std::string& aSerial,
+                 const std::string& aSizeBytes);
 };
