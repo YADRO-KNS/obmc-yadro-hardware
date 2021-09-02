@@ -34,18 +34,18 @@ Storage manager aimed to provide inventory information about storage devices and
   └─/xyz/openbmc_project
     └─/xyz/openbmc_project/inventory
       └─/xyz/openbmc_project/inventory/system
-        └─/xyz/openbmc_project/inventory/system/chassis
-          ├─/xyz/openbmc_project/inventory/system/chassis/drive_1
-          ├─/xyz/openbmc_project/inventory/system/chassis/drive_2
+        └─/xyz/openbmc_project/inventory/system/drive
+          ├─/xyz/openbmc_project/inventory/system/drive/drive_1
+          ├─/xyz/openbmc_project/inventory/system/drive/drive_2
 ```
-Each drive object contains folowing interfaces:
+Each drive object contains following interfaces:
 * xyz.openbmc_project.Inventory.Item
 * xyz.openbmc_project.Inventory.Item.Drive
 * xyz.openbmc_project.Inventory.Decorator.Asset
 * xyz.openbmc_project.State.Decorator.OperationalStatus
 
 ```
-# busctl introspect com.yadro.Storage /xyz/openbmc_project/inventory/system/chassis/drive_1
+~# busctl introspect com.yadro.Storage /xyz/openbmc_project/inventory/system/drive/drive_1
 NAME                                                  TYPE      SIGNATURE RESULT/VALUE                             FLAGS
 org.freedesktop.DBus.Introspectable                   interface -         -                                        -
 .Introspect                                           method    -         s                                        -
@@ -68,6 +68,7 @@ xyz.openbmc_project.Inventory.Item                    interface -         -     
 .PrettyName                                           property  s         "SATA 250GB drive 1"                     emits-change writable
 xyz.openbmc_project.Inventory.Item.Drive              interface -         -                                        -
 .Capacity                                             property  t         250059350016                             emits-change writable
+.Interfaces                                           property  as        1 "xyz.openbmc_project.Inventory.Item.D… emits-change writable
 .Type                                                 property  s         "xyz.openbmc_project.Inventory.Item.Dri… emits-change writable
 xyz.openbmc_project.State.Decorator.OperationalStatus interface -         -                                        -
 .Functional                                           property  b         true                                     emits-change writable

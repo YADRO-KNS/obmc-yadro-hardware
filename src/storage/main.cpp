@@ -94,7 +94,7 @@ void Manager::rescan()
 int main()
 {
     auto bus = sdbusplus::bus::new_default();
-    sdbusplus::server::manager_t objManager(bus, dbus::stormgr::path);
+    sdbusplus::server::manager_t objManager(bus, "/");
 
     bus.request_name(dbus::stormgr::busName);
     Manager storageManager(bus);
