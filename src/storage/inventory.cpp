@@ -69,11 +69,6 @@ StorageDrive::StorageDrive(sdbusplus::bus::bus& bus, const std::string& aName,
         bus, dbusEscape(std::string(dbus::inventory::pathBase) +
                         inventorySubPath + aName)
                  .c_str()),
-    sdbusplus::server::object::object<
-        sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::
-            Connection>(bus, dbusEscape(std::string(dbus::inventory::pathBase) +
-                                        inventorySubPath + aName)
-                                 .c_str()),
     sdbusplus::server::object::object<sdbusplus::xyz::openbmc_project::State::
                                           Decorator::server::OperationalStatus>(
         bus, dbusEscape(std::string(dbus::inventory::pathBase) +
@@ -153,27 +148,27 @@ StorageDrive::StorageDrive(sdbusplus::bus::bus& bus, const std::string& aName,
     }
     name += aName;
 
-    Connection::ProtoType proto = Connection::ProtoType::Unknown;
+    std::vector<DriveInterface> iface;
     if (aProto == "SATA")
     {
-        proto = Connection::ProtoType::SATA;
+        iface.emplace_back(DriveInterface::SATA);
     }
     else if (aProto == "SAS")
     {
-        proto = Connection::ProtoType::SAS;
+        iface.emplace_back(DriveInterface::SAS);
     }
     else if (aProto == "NVMe")
     {
-        proto = Connection::ProtoType::NVMe;
+        iface.emplace_back(DriveInterface::NVMe);
     }
-    Drive::DriveType driveType = Drive::DriveType::Unknown;
+    DriveType driveType = DriveType::Unknown;
     if (aType == "SSD")
     {
-        driveType = Drive::DriveType::SSD;
+        driveType = DriveType::SSD;
     }
     else if (aType == "HDD")
     {
-        driveType = Drive::DriveType::HDD;
+        driveType = DriveType::HDD;
     }
 
     // xyz.openbmc_project.Inventory.Item
@@ -182,12 +177,11 @@ StorageDrive::StorageDrive(sdbusplus::bus::bus& bus, const std::string& aName,
     // xyz.openbmc_project.Inventory.Item.Drive
     capacity(sizeInt);
     type(driveType);
+    interfaces(iface);
     // xyz.openbmc_project.Inventory.Decorator.Asset
     serialNumber(aSerial);
     manufacturer(manuf);
     model(aModel);
-    // xyz.openbmc_project.Inventory.Decorator.Connection
-    protocol(proto);
     // xyz.openbmc_project.State.Decorator.OperationalStatus
     functional(true);
 }
