@@ -5,19 +5,12 @@
 
 #pragma once
 
+#include "options.hpp"
+
 #include <sdbusplus/asio/connection.hpp>
 #include <sdbusplus/bus.hpp>
 
 struct ProductDescription;
-
-enum class OptionType
-{
-    macAddr = 0x01,
-    cpuCooling = 0x02,
-    chassisFans = 0x03,
-    pidZoneMinSpeed = 0x04,
-    none = 0x00
-};
 
 struct ChassisPIDZone
 {
@@ -83,8 +76,9 @@ class HWManager
     HWManager(boost::asio::io_service& io, sdbusplus::bus::bus& bus) :
         io(io), bus(bus)
     {}
-    void setProduct(std::string pname);
-    void setOption(std::string option);
+    void setProduct(const std::string& pname);
+    bool setOption(const OptionType& optType, const int& instance,
+                   const std::string& value);
     void publish();
 
     HWManagerData config;

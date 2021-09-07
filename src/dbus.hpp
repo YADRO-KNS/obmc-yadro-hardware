@@ -78,6 +78,14 @@ namespace properties
 const constexpr char* MinThermalOutput = "MinThermalOutput";
 } // namespace properties
 } // namespace pid
+
+namespace pcie_cfg
+{
+namespace properties
+{
+constexpr const char* bifurcation = "Bifurcation";
+} // namespace properties
+} // namespace pcie_cfg
 } // namespace dbus
 
 using Interface = std::string;

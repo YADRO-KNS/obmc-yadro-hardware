@@ -3,14 +3,19 @@
  * Copyright (C) 2021 YADRO.
  */
 
+#include "pcie_cfg.h"
+
 #include "dbus.hpp"
 #include "hw_mngr.hpp"
+#include "options.hpp"
 
 #include <phosphor-logging/log.hpp>
 #include <sdbusplus/asio/connection.hpp>
 #include <sdbusplus/asio/object_server.hpp>
 #include <sdbusplus/bus.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
+
+#include <charconv>
 
 static constexpr uint64_t dbusTimeout = 1 * 1000 * 1000; // Set timeout to 1s
 
@@ -106,6 +111,59 @@ bool cpuPresenceUpdate(std::shared_ptr<sdbusplus::asio::connection>& systemBus,
     return true;
 }
 
+static void handleOption(HWManager* const manager, pcieCfg* const pcieConf,
+                         const std::string& option)
+{
+    OptionType optType = OptionType::none;
+    int instance = 0;
+    std::string value;
+    static const std::regex optionRegex(
+        "[a-f0-9]{4,}", std::regex::icase | std::regex::optimize);
+    if (!std::regex_match(option, optionRegex))
+    {
+        log<level::ERR>("Invalid option format",
+                        entry("VALUE=%s", option.c_str()));
+        return;
+    }
+
+    int type;
+    std::from_chars(option.data(), option.data() + 2, type, 16);
+    optType = static_cast<OptionType>(type);
+    std::from_chars(option.data() + 2, option.data() + 4, instance, 16);
+    value = option.substr(4);
+
+    switch (optType)
+    {
+        case OptionType::macAddr:
+            // do nothing
+            break;
+        case OptionType::cpuCooling:
+        case OptionType::chassisFans:
+        case OptionType::pidZoneMinSpeed:
+        {
+            if (!(manager && manager->setOption(optType, instance, value)))
+            {
+                log<level::ERR>("Can't handle option",
+                                entry("VALUE=%s", option.c_str()));
+            }
+            break;
+        }
+        case OptionType::pcieBifurcation:
+        {
+            if (!(pcieConf && pcieConf->addBifurcationConfig(instance, value)))
+            {
+                log<level::ERR>("Can't handle pcieBifurcation option",
+                                entry("VALUE=%s", option.c_str()));
+            }
+            break;
+        }
+        default:
+            log<level::ERR>("Unknown option type",
+                            entry("VALUE=%s", option.c_str()));
+            break;
+    }
+}
+
 void createInventory(boost::asio::io_service& io,
                      std::shared_ptr<sdbusplus::asio::connection>& systemBus,
                      HWManager& manager)
@@ -131,17 +189,17 @@ void createInventory(boost::asio::io_service& io,
         return;
     }
 
+    pcieCfg pcieConfiguration(static_cast<sdbusplus::bus::bus&>(*systemBus));
     for (const auto& pathPair : managedObj)
     {
+        auto findIface = pathPair.second.find(dbus::fru::interface);
+        if (findIface == pathPair.second.end())
+            continue;
 
         std::string path = pathPair.first.str;
         if ((path.find("Motherboard") != std::string::npos) ||
             (path.find("Baseboard") != std::string::npos))
         {
-            auto findIface = pathPair.second.find(dbus::fru::interface);
-            if (findIface == pathPair.second.end())
-                continue;
-
             manager.config.reset();
             for (const auto& [property, value] : findIface->second)
             {
@@ -161,9 +219,10 @@ void createInventory(boost::asio::io_service& io,
                         manager.config.chassisSerial =
                             std::get<std::string>(value);
                     }
-                    else if (property.find("PRODUCT_INFO_AM") == 0)
+                    else if (property.rfind("_INFO_AM") != std::string::npos)
                     {
-                        manager.setOption(std::get<std::string>(value));
+                        handleOption(&manager, &pcieConfiguration,
+                                     std::get<std::string>(value));
                     }
                 }
                 catch (std::exception const& ex)
@@ -181,6 +240,25 @@ void createInventory(boost::asio::io_service& io,
                 }
             }
             break;
+        }
+        else if (path.find("Riser") != std::string::npos)
+        {
+            for (const auto& [property, value] : findIface->second)
+            {
+                try
+                {
+                    if (property.rfind("_INFO_AM") != std::string::npos)
+                    {
+                        handleOption(nullptr, &pcieConfiguration,
+                                     std::get<std::string>(value));
+                    }
+                }
+                catch (std::exception const& ex)
+                {
+                    log<level::ERR>("Error while parsing FRU fields",
+                                    entry("WHAT=%s", ex.what()));
+                }
+            }
         }
     }
 
