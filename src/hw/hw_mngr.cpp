@@ -17,7 +17,7 @@
 namespace fs = std::filesystem;
 using namespace phosphor::logging;
 
-void HWManager::setProduct(std::string pname)
+void HWManager::setProduct(const std::string& pname)
 {
     config.chassisModel = pname;
     config.desc = nullptr;
@@ -57,31 +57,11 @@ static std::string getZoneName(int index)
     return std::string();
 }
 
-void HWManager::setOption(std::string option)
+bool HWManager::setOption(const OptionType& optType, const int& instance,
+                          const std::string& value)
 {
-    OptionType optType = OptionType::none;
-    int instance = 0;
-    std::string value;
-    static const std::regex optionRegex(
-        "[a-f0-9]{4,}", std::regex::icase | std::regex::optimize);
-    if (!std::regex_match(option, optionRegex))
-    {
-        log<level::ERR>("Invalid option format",
-                        entry("VALUE=%s", option.c_str()));
-        return;
-    }
-
-    int type;
-    std::from_chars(option.data(), option.data() + 2, type, 16);
-    optType = static_cast<OptionType>(type);
-    std::from_chars(option.data() + 2, option.data() + 4, instance, 16);
-    value = option.substr(4);
-
     switch (optType)
     {
-        case OptionType::macAddr:
-            // do nothing
-            break;
         case OptionType::cpuCooling:
             if (value == "00") // Passive PCU cooling
             {
@@ -99,16 +79,16 @@ void HWManager::setOption(std::string option)
             int fan_no = 0;
             if (value.size() < 2)
             {
-                log<level::ERR>("Invalid option value format",
-                                entry("VALUE=%s", option.c_str()));
-                return;
+                log<level::ERR>("Invalid chassisFans option value format",
+                                entry("VALUE=%s", value.c_str()));
+                return false;
             }
             auto res = std::from_chars(value.data(), value.data() + 2, cnt, 16);
             if (res.ec != std::errc() || value.size() < (cnt + 1) * 2)
             {
-                log<level::ERR>("Invalid option value format",
-                                entry("VALUE=%s", option.c_str()));
-                return;
+                log<level::ERR>("Invalid chassisFans option value format",
+                                entry("VALUE=%s", value.c_str()));
+                return false;
             }
 
             config.chassisFans[zoneName].fanConnector.clear();
@@ -117,9 +97,9 @@ void HWManager::setOption(std::string option)
                 res = std::from_chars(res.ptr, res.ptr + 2, fan_no, 16);
                 if (res.ec != std::errc())
                 {
-                    log<level::ERR>("Invalid option value format",
-                                    entry("VALUE=%s", option.c_str()));
-                    return;
+                    log<level::ERR>("Invalid chassisFans option value format",
+                                    entry("VALUE=%s", value.c_str()));
+                    return false;
                 }
                 config.chassisFans[zoneName].fanConnector.emplace_back(fan_no);
             }
@@ -131,9 +111,9 @@ void HWManager::setOption(std::string option)
             int speed = 0;
             if (value.size() != 2)
             {
-                log<level::ERR>("Invalid option value format",
-                                entry("VALUE=%s", option.c_str()));
-                return;
+                log<level::ERR>("Invalid pidZoneMinSpeed option value format",
+                                entry("VALUE=%s", value.c_str()));
+                return false;
             }
             std::from_chars(value.data(), value.data() + 2, speed, 16);
             if ((speed >= 5) && (speed <= 100))
@@ -143,10 +123,9 @@ void HWManager::setOption(std::string option)
             break;
         }
         default:
-            log<level::ERR>("Unknown option type",
-                            entry("VALUE=%s", option.c_str()));
-            break;
+            return false;
     }
+    return true;
 }
 
 void HWManager::publish()
