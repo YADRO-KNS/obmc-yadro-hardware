@@ -148,18 +148,18 @@ StorageDrive::StorageDrive(sdbusplus::bus::bus& bus, const std::string& aName,
     }
     name += aName;
 
-    std::vector<DriveInterface> iface;
+    DriveProtocol proto = DriveProtocol::Unknown;
     if (aProto == "SATA")
     {
-        iface.emplace_back(DriveInterface::SATA);
+        proto = DriveProtocol::SATA;
     }
     else if (aProto == "SAS")
     {
-        iface.emplace_back(DriveInterface::SAS);
+        proto = DriveProtocol::SAS;
     }
     else if (aProto == "NVMe")
     {
-        iface.emplace_back(DriveInterface::NVMe);
+        proto = DriveProtocol::NVMe;
     }
     DriveType driveType = DriveType::Unknown;
     if (aType == "SSD")
@@ -177,7 +177,7 @@ StorageDrive::StorageDrive(sdbusplus::bus::bus& bus, const std::string& aName,
     // xyz.openbmc_project.Inventory.Item.Drive
     capacity(sizeInt);
     type(driveType);
-    interfaces(iface);
+    protocol(proto);
     // xyz.openbmc_project.Inventory.Decorator.Asset
     serialNumber(aSerial);
     manufacturer(manuf);
