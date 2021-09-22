@@ -66,9 +66,7 @@ bool pcieCfg::addBifurcationConfig(const int& socket,
 {
     uint16_t instance = 0;
     uint8_t value = 0;
-    static const std::regex optionRegex(
-        "[a-f0-9]{4}", std::regex::icase | std::regex::optimize);
-    if (!std::regex_match(optValue, optionRegex))
+    if (optValue.size() < 4)
     {
         log<level::ERR>("Invalid PCIe configuration option format",
                         entry("VALUE=%s", optValue.c_str()));
@@ -78,6 +76,12 @@ bool pcieCfg::addBifurcationConfig(const int& socket,
     std::from_chars(optValue.data() + 0, optValue.data() + 2, instance, 16);
     std::from_chars(optValue.data() + 2, optValue.data() + 4, value, 16);
     instance |= (socket & 0xFF) << 8;
+    if (optValue.size() > 4)
+    { // TODO: implement slot description parsing
+        std::string slots = optValue.substr(4);
+        log<level::DEBUG>("PCIe configuration option contain slot description",
+                          entry("VALUE=%s", slots.c_str()));
+    }
 
     // Check if another hardware component has already claimed this port and try
     // to merge the configurations. For that purpose we assume here that a port
