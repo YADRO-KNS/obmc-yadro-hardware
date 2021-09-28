@@ -68,7 +68,7 @@ xyz.openbmc_project.Inventory.Item                    interface -         -     
 .PrettyName                                           property  s         "SATA 250GB drive 1"                     emits-change writable
 xyz.openbmc_project.Inventory.Item.Drive              interface -         -                                        -
 .Capacity                                             property  t         250059350016                             emits-change writable
-.Interfaces                                           property  as        1 "xyz.openbmc_project.Inventory.Item.D… emits-change writable
+.Protocol                                             property  s         "xyz.openbmc_project.Inventory.Item.Dri… emits-change writable
 .Type                                                 property  s         "xyz.openbmc_project.Inventory.Item.Dri… emits-change writable
 xyz.openbmc_project.State.Decorator.OperationalStatus interface -         -                                        -
 .Functional                                           property  b         true                                     emits-change writable
