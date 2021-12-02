@@ -1,0 +1,12 @@
+[Unit]
+Description=Network adapters manager service
+
+[Service]
+Type=dbus
+BusName=com.yadro.NetworkAdapter
+Restart=always
+RestartSec=5
+ExecStart=/usr/bin/yadro-network-adapter-manager
+
+[Install]
+WantedBy=multi-user.target
