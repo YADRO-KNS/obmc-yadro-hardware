@@ -35,6 +35,12 @@ constexpr const char* busName = "com.yadro.Storage";
 constexpr const char* path = "/com/yadro/storage";
 } // namespace stormgr
 
+namespace netadpmgr
+{
+constexpr const char* busName = "com.yadro.NetworkAdapter";
+constexpr const char* path = "/com/yadro/network/adapter";
+} // namespace netadpmgr
+
 namespace objmgr
 {
 constexpr const char* interface = "org.freedesktop.DBus.ObjectManager";

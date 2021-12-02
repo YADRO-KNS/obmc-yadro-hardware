@@ -17,6 +17,18 @@ sdbusgen_prog = find_program('sdbus++-gendir')
 realpath_prog = find_program('realpath')
 generated_files = []
 
+if meson.get_compiler('cpp').has_header('nlohmann/json.hpp')
+    nlohmann_json = declare_dependency()
+else
+    subproject('nlohmann', required: false)
+    nlohmann_json = declare_dependency(
+        include_directories: [
+            'subprojects/nlohmann/single_include',
+            'subprojects/nlohmann/single_include/nlohmann',
+        ]
+    )
+endif
+
 yadro_hw_ifaces = files(
     run_command(
         sdbusgen_prog,
@@ -78,6 +90,21 @@ executable('yadro-storage-manager',
         boost,
         sdbusplus_dep,
         pdi_dep
+    ],
+    install: true,
+)
+
+executable('yadro-network-adapter-manager',
+    'src/network/main.cpp',
+    'src/network/adapter.cpp',
+    generated_files,
+    include_directories : incdir,
+    cpp_args: cpp_args,
+    dependencies: [
+        boost,
+        sdbusplus_dep,
+        pdi_dep,
+        nlohmann_json
     ],
     install: true,
 )
