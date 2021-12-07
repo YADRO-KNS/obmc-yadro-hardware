@@ -3,7 +3,7 @@
  * Copyright (C) 2021 YADRO.
  */
 
-#include "com/yadro/Storage/Manager/server.hpp"
+#include "com/yadro/Inventory/Manager/server.hpp"
 #include "dbus.hpp"
 #include "inventory.hpp"
 
@@ -20,7 +20,7 @@ using namespace phosphor::logging;
 static constexpr const char* storageDataFile = "/var/lib/inventory/storage.csv";
 
 using StorageManagerServer = sdbusplus::server::object_t<
-    sdbusplus::com::yadro::Storage::server::Manager>;
+    sdbusplus::com::yadro::Inventory::server::Manager>;
 
 class Manager : StorageManagerServer
 {
