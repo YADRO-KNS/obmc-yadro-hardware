@@ -6,6 +6,7 @@
 #include "inventory.hpp"
 
 #include "dbus.hpp"
+#include "pcidb.hpp"
 
 #include <phosphor-logging/log.hpp>
 
@@ -15,38 +16,6 @@
 using namespace phosphor::logging;
 
 static constexpr const char* inventorySubPath = "/system/drive/";
-static constexpr const char* pciidsPath = "/usr/share/misc/pci.ids";
-
-static std::string pciVenorLookup(const std::string& aVendorId)
-{
-    static const size_t prefixLen = 0;
-    static const size_t wordLen = 4;
-    static const size_t sepLen = 2;
-    std::string line;
-    std::string vendorName;
-    std::ifstream idfile(pciidsPath);
-    if (!idfile.is_open())
-    {
-        log<level::ERR>("failed to open pid.ids file");
-        return std::string();
-    }
-
-    while (std::getline(idfile, line))
-    {
-        std::string curVIDstr = line.substr(prefixLen, wordLen);
-        if (curVIDstr.compare(aVendorId) == 0)
-        {
-            vendorName = line.substr(prefixLen + wordLen + sepLen);
-            if (line.compare(prefixLen + wordLen, sepLen, "  ") != 0)
-            {
-                log<level::ERR>("pid.ids: wrong vendor line format",
-                                entry("VALUE=%s", line.c_str()));
-            }
-            break;
-        }
-    }
-    return vendorName;
-}
 
 StorageDrive::StorageDrive(sdbusplus::bus::bus& bus, const std::string& aName,
                            const std::string& aPath, const std::string& aProto,
@@ -135,7 +104,7 @@ StorageDrive::StorageDrive(sdbusplus::bus::bus& bus, const std::string& aName,
     // try to render drive manufacturer (use pci.ids database)
     if ((!aVendor.empty()) && (aProto == "NVMe"))
     {
-        manuf = pciVenorLookup(aVendor);
+        manuf = pciLookup(aVendor).first;
     }
     // assemble drive name
     if (!aProto.empty())
