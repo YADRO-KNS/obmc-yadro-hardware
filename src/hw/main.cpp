@@ -197,8 +197,8 @@ void createInventory(boost::asio::io_service& io,
             continue;
 
         std::string path = pathPair.first.str;
-        if ((path.find("Motherboard") != std::string::npos) ||
-            (path.find("Baseboard") != std::string::npos))
+        if ((path.rfind("Motherboard") != std::string::npos) ||
+            (path.rfind("Baseboard") != std::string::npos))
         {
             manager.config.reset();
             for (const auto& [property, value] : findIface->second)
@@ -241,7 +241,8 @@ void createInventory(boost::asio::io_service& io,
             }
             break;
         }
-        else if (path.find("Riser") != std::string::npos)
+        else if ((path.rfind("Riser") != std::string::npos) ||
+                 (path.rfind("Backplane") != std::string::npos))
         {
             for (const auto& [property, value] : findIface->second)
             {
