@@ -36,7 +36,9 @@ struct HWManagerData
     std::map<size_t, bool> cpuPresence;
     std::map<std::string, ChassisPIDZone> chassisFans;
 
-    HWManagerData() : haveCPUFans(false)
+    HWManagerData() :
+        desc(nullptr), chassisModel(), chassisPartNumber(), chassisSerial(),
+        haveCPUFans(false), cpuPresence(), chassisFans()
     {}
     void reset()
     {
