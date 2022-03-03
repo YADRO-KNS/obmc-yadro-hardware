@@ -27,6 +27,17 @@ static constexpr uint8_t pcieBifurcateXXX8XXX8 = 3;
 static constexpr uint8_t pcieBifurcateXXXXXX16 = 4;
 static constexpr uint8_t pcieBifurcateXXXXXXXX = 0xF;
 
+static constexpr uint8_t bmcPcieBifurcateX4X4X4X4 = 0x44;
+static constexpr uint8_t bmcPcieBifurcateX4X4XXX8 = 0x48;
+static constexpr uint8_t bmcPcieBifurcateXXX8X4X4 = 0x84;
+static constexpr uint8_t bmcPcieBifurcateXXX8XXX8 = 0x88;
+static constexpr uint8_t bmcPcieBifurcateXXXXXX16 = 0x16;
+static constexpr uint8_t bmcPcieBifurcate____X4X4 = 0xF4;
+static constexpr uint8_t bmcPcieBifurcate____XXX8 = 0xF8;
+static constexpr uint8_t bmcPcieBifurcateX4X4____ = 0x4F;
+static constexpr uint8_t bmcPcieBifurcateXXX8____ = 0x8F;
+static constexpr uint8_t bmcPcieBifurcateDisabled = 0xDD;
+
 /**
  * @brief Lookup dbus service for interface
  *
@@ -83,6 +94,37 @@ bool pcieCfg::addBifurcationConfig(const int& socket,
                           entry("VALUE=%s", slots.c_str()));
     }
 
+    // FIXME: we hardcode RADUNI address for now since currently we
+    // only support Rx20 Gen1 and it is said that RADUNI will always be
+    // connected to CPU0 port PE2 via J45 (B1)
+    if (instance == 0xFFFF)
+    {
+        instance = 0x0002;
+        value = bmcPcieBifurcate____XXX8;
+    }
+    // Translate old style constants to new
+    switch (value)
+    {
+        case pcieBifurcateX4X4X4X4:
+            value = bmcPcieBifurcateX4X4X4X4;
+            break;
+        case pcieBifurcateX4X4XXX8:
+            value = bmcPcieBifurcateX4X4XXX8;
+            break;
+        case pcieBifurcateXXX8X4X4:
+            value = bmcPcieBifurcateXXX8X4X4;
+            break;
+        case pcieBifurcateXXX8XXX8:
+            value = bmcPcieBifurcateXXX8XXX8;
+            break;
+        case pcieBifurcateXXXXXX16:
+            value = bmcPcieBifurcateXXXXXX16;
+            break;
+        case pcieBifurcateXXXXXXXX:
+            value = bmcPcieBifurcateDisabled;
+            break;
+    }
+
     // Check if another hardware component has already claimed this port and try
     // to merge the configurations. For that purpose we assume here that a port
     // can only be split across two components by halves (8 lanes), and that for
@@ -97,37 +139,32 @@ bool pcieCfg::addBifurcationConfig(const int& socket,
         {
             return true;
         }
-        else if (((old_value == pcieBifurcateX4X4XXX8) ||
-                  (old_value == pcieBifurcateXXX8X4X4)) &&
-                 (value == pcieBifurcateXXX8XXX8))
+        else if (value == bmcPcieBifurcateDisabled)
         {
-            // We want to set our half to 'x8', while other component split it's
-            // half into 'x4x4' - keep old value, since it has already set 'x8'
-            // for us
+            // in case of conflict "Disabled" value have less priority
             return true;
         }
-        else if ((old_value == pcieBifurcateXXX8XXX8) &&
-                 ((value == pcieBifurcateX4X4XXX8) ||
-                  (value == pcieBifurcateXXX8X4X4)))
+        else if (old_value == bmcPcieBifurcateDisabled)
         {
-            // We want to split our half into 'x4x4', while other component uses
-            // it's half as 'x8' - set our value
+            // in case of conflict "Disabled" value have less priority
             bifurcationConfig[instance] = value;
             return true;
         }
-        else if (((old_value == pcieBifurcateX4X4XXX8) &&
-                  (value == pcieBifurcateXXX8X4X4)) ||
-                 ((old_value == pcieBifurcateXXX8X4X4) &&
-                  (value == pcieBifurcateX4X4XXX8)))
+        else if (((old_value & 0x0f) == 0x0f) && ((value & 0xf0) == 0xf0))
         {
-            // We both want to split our halves into 'x4x4' - resulting
-            // configuration is 'x4x4x4x4'
-            bifurcationConfig[instance] = pcieBifurcateX4X4X4X4;
+            // merge High half of old value with Low half of current value
+            bifurcationConfig[instance] = (old_value & 0xf0) | (value & 0x0f);
+            return true;
+        }
+        else if (((value & 0x0f) == 0x0f) && ((old_value & 0xf0) == 0xf0))
+        {
+            // merge Low half of old value with High half of current value
+            bifurcationConfig[instance] = (value & 0xf0) | (old_value & 0x0f);
             return true;
         }
         else
         {
-            log<level::ERR>("incompatible option values",
+            log<level::ERR>("Incompatible option values",
                             entry("VALUE=%d", value),
                             entry("OLD_VALUE=%d", old_value));
             return false;
@@ -151,21 +188,40 @@ pcieCfg::~pcieCfg()
         PCIe::BifurcationMode bifurcation = PCIe::BifurcationMode::disabled;
         switch (mode)
         {
-            case pcieBifurcateX4X4X4X4:
+            case bmcPcieBifurcateX4X4X4X4:
                 bifurcation = PCIe::BifurcationMode::x4x4x4x4;
                 break;
-            case pcieBifurcateX4X4XXX8:
+            case bmcPcieBifurcateX4X4XXX8:
                 bifurcation = PCIe::BifurcationMode::x4x4x8;
                 break;
-            case pcieBifurcateXXX8X4X4:
+            case bmcPcieBifurcateXXX8X4X4:
                 bifurcation = PCIe::BifurcationMode::x8x4x4;
                 break;
-            case pcieBifurcateXXX8XXX8:
+            case bmcPcieBifurcateXXX8XXX8:
                 bifurcation = PCIe::BifurcationMode::x8x8;
                 break;
-            case pcieBifurcateXXXXXX16:
+            case bmcPcieBifurcateXXXXXX16:
                 bifurcation = PCIe::BifurcationMode::x16;
                 break;
+            case bmcPcieBifurcate____X4X4:
+                bifurcation = PCIe::BifurcationMode::lo_x4x4;
+                break;
+            case bmcPcieBifurcate____XXX8:
+                bifurcation = PCIe::BifurcationMode::lo_x8;
+                break;
+            case bmcPcieBifurcateX4X4____:
+                bifurcation = PCIe::BifurcationMode::hi_x4x4;
+                break;
+            case bmcPcieBifurcateXXX8____:
+                bifurcation = PCIe::BifurcationMode::hi_x8;
+                break;
+            case bmcPcieBifurcateDisabled:
+                bifurcation = PCIe::BifurcationMode::disabled;
+                break;
+            default:
+                log<level::ERR>("Unexpected bifurcation value",
+                                entry("VALUE=%d", mode));
+                continue;
         }
         config.emplace_back(std::make_tuple(socket, iouNumber, bifurcation));
     }
