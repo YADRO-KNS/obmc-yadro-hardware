@@ -23,6 +23,7 @@ struct FanConDescription
     uint32_t tachIndexA;
     uint32_t tachIndexB;
     uint32_t pwmIndex;
+    uint32_t pwmLimitMax;
 };
 
 static const std::map<size_t, FanConDescription> FanConnectorsN110 = {
@@ -196,7 +197,8 @@ static const std::map<size_t, FanConDescription> FanConnectorsR120 = {
       .zone = "Main",
       .tachIndexA = 1,
       .tachIndexB = 8,
-      .pwmIndex = 1}},
+      .pwmIndex = 1,
+      .pwmLimitMax = 80}},
     {2,
      {.type = ConnectorType::SYSTEM,
       .fanIndex = 2,
@@ -212,7 +214,8 @@ static const std::map<size_t, FanConDescription> FanConnectorsR120 = {
       .zone = "Main",
       .tachIndexA = 0,
       .tachIndexB = 7,
-      .pwmIndex = 0}},
+      .pwmIndex = 0,
+      .pwmLimitMax = 80}},
     {4,
      {.type = ConnectorType::SYSTEM,
       .fanIndex = 4,
@@ -220,7 +223,8 @@ static const std::map<size_t, FanConDescription> FanConnectorsR120 = {
       .zone = "Main",
       .tachIndexA = 4,
       .tachIndexB = 11,
-      .pwmIndex = 4}},
+      .pwmIndex = 4,
+      .pwmLimitMax = 80}},
     {5,
      {.type = ConnectorType::SYSTEM,
       .fanIndex = 5,
@@ -244,7 +248,8 @@ static const std::map<size_t, FanConDescription> FanConnectorsR120 = {
       .zone = "Main",
       .tachIndexA = 6,
       .tachIndexB = 13,
-      .pwmIndex = 6}},
+      .pwmIndex = 6,
+      .pwmLimitMax = 86}},
 };
 static const std::map<size_t, FanConDescription> FanConnectorsR220 = {
     {1,

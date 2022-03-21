@@ -154,7 +154,8 @@ void HWManager::publish()
             fans.emplace_back(std::make_shared<Fan>(
                 bus, "Sys_Fan" + fanIndexStr, "System Fan " + fanIndexStr,
                 sysFanMod, sysFanPN, conDescr.zone, conDescr.connector,
-                conDescr.tachIndexA, conDescr.tachIndexB, conDescr.pwmIndex));
+                conDescr.tachIndexA, conDescr.tachIndexB, conDescr.pwmIndex,
+                conDescr.pwmLimitMax));
         }
         else if ((conDescr.type == ConnectorType::CPU) && config.haveCPUFans)
         {
@@ -166,7 +167,8 @@ void HWManager::publish()
                     bus, "CPU" + fanIndexStr + "_Fan",
                     "CPU" + fanIndexStr + " Fan", cpuFanMod, cpuFanPN,
                     conDescr.zone, conDescr.connector, conDescr.tachIndexA,
-                    conDescr.tachIndexB, conDescr.pwmIndex));
+                    conDescr.tachIndexB, conDescr.pwmIndex,
+                    conDescr.pwmLimitMax));
             }
         }
     }
@@ -202,7 +204,7 @@ void HWManager::publish()
                 bus, "Cha_Fan" + fanIndexStr, "Chassis Fan " + fanIndexStr,
                 chsFanMod, chsFanPN, zoneName, it->second.connector,
                 it->second.tachIndexA, it->second.tachIndexB,
-                it->second.pwmIndex));
+                it->second.pwmIndex, it->second.pwmLimitMax));
             chassisFanIndex++;
         }
     }
