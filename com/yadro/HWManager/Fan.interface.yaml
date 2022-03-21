@@ -45,3 +45,10 @@ properties:
         - readonly
       description: >
           Index of Fan PWM line
+    - name: pwm_limit_max
+      type: uint32
+      default: 100
+      flags:
+        - readonly
+      description: >
+          Upper speed limit for Fan PWM, 30..100%

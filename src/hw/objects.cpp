@@ -24,7 +24,8 @@ Fan::Fan(sdbusplus::bus::bus& bus, const std::string& aName,
          const std::string& aPrettyName, const std::string& aModel,
          const std::string& aPartNumber, const std::string& aZone,
          const std::string& aConnector, const uint32_t& aTachIndexA,
-         const uint32_t& aTachIndexB, const uint32_t& aPwmIndex) :
+         const uint32_t& aTachIndexB, const uint32_t& aPwmIndex,
+         const uint32_t& aPwmLimitMax) :
     HWManagerFanServer(
         bus,
         dbusEscape(std::string(dbus::hwmgr::path) + "/fan/" + aName).c_str())
@@ -45,4 +46,8 @@ Fan::Fan(sdbusplus::bus::bus& bus, const std::string& aName,
     // object created early then Chassis object. There is "FOUND" Match
     // condition that should help to fight the race but it doesn't work.
     pwmIndex(aPwmIndex);
+    if (aPwmLimitMax >= 30 && aPwmLimitMax <= 100)
+    {
+        pwmLimitMax(aPwmLimitMax);
+    }
 }

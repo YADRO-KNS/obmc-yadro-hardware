@@ -27,5 +27,6 @@ class Fan : HWManagerFanServer
         const std::string& aPrettyName, const std::string& aModel,
         const std::string& aPartNumber, const std::string& aZone,
         const std::string& aConnector, const uint32_t& aTachIndexA,
-        const uint32_t& aTachIndexB, const uint32_t& aPwmIndex);
+        const uint32_t& aTachIndexB, const uint32_t& aPwmIndex,
+        const uint32_t& aPwmLimitMax);
 };
