@@ -15,11 +15,18 @@
 #include <sdbusplus/bus.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 
+#include <boost/algorithm/string/predicate.hpp>
+
 #include <charconv>
 
 static constexpr uint64_t dbusTimeout = 1 * 1000 * 1000; // Set timeout to 1s
 
 using namespace phosphor::logging;
+
+static std::string makeStringParam(std::string name, std::string value)
+{
+    return name + "='" + value + "'";
+}
 
 void createInventoryDelayed(
     boost::asio::io_service& io,
@@ -44,7 +51,7 @@ bool cpuPresenceUpdate(std::shared_ptr<sdbusplus::asio::connection>& systemBus,
     }
     catch (const sdbusplus::exception::SdBusError& ex)
     {
-        log<level::DEBUG>("Error while calling GetSubTree",
+        log<level::ERR>("Error while calling GetSubTree",
                           entry("WHAT=%s", ex.what()));
         return false;
     }
@@ -85,7 +92,7 @@ bool cpuPresenceUpdate(std::shared_ptr<sdbusplus::asio::connection>& systemBus,
         }
         catch (const sdbusplus::exception::exception& ex)
         {
-            log<level::DEBUG>("Error while calling GetAll",
+            log<level::ERR>("Error while calling GetAll",
                               entry("SERVICE=%s", owner.c_str()),
                               entry("PATH=%s", path.c_str()),
                               entry("INTERFACE=%s", dbus::inventory::interface),
@@ -162,6 +169,41 @@ static void handleOption(HWManager* const manager, pcieCfg* const pcieConf,
                             entry("VALUE=%s", option.c_str()));
             break;
     }
+}
+
+void publishDelayed(
+    boost::asio::io_service& io,
+    std::shared_ptr<sdbusplus::asio::connection>& systemBus, HWManager& manager)
+{
+    static boost::asio::deadline_timer filterTimer(io);
+
+    filterTimer.cancel();
+
+    // this implicitly cancels the timer
+    filterTimer.expires_from_now(boost::posix_time::seconds(1));
+    filterTimer.async_wait([&](const boost::system::error_code& err) {
+        if (err == boost::asio::error::operation_aborted)
+        {
+            /* we were canceled*/
+            return;
+        }
+        else if (err)
+        {
+            log<level::ERR>("Timer error",
+                            entry("WHAT=%s", err.message().c_str()));
+            return;
+        }
+
+        if (manager.getDetectFanState() == FanState::normal)
+        {
+            manager.publish();
+            log<level::DEBUG>("Scan done");
+        }
+        else
+        {
+            publishDelayed(io, systemBus, manager);
+        }
+    });
 }
 
 void createInventory(boost::asio::io_service& io,
@@ -263,8 +305,10 @@ void createInventory(boost::asio::io_service& io,
         }
     }
 
-    manager.publish();
-    log<level::DEBUG>("Scan done");
+    if (manager.config.desc)
+        manager.runDetectFans();
+
+    publishDelayed(io, systemBus, manager);
 }
 
 void createInventoryDelayed(
@@ -273,6 +317,8 @@ void createInventoryDelayed(
     int delay)
 {
     static boost::asio::deadline_timer filterTimer(io);
+
+    filterTimer.cancel();
 
     // this implicitly cancels the timer
     filterTimer.expires_from_now(boost::posix_time::seconds(delay));
@@ -325,6 +371,36 @@ int main()
             dbus::inventory::path + "',arg0namespace='" +
             dbus::inventory::interface + "'",
         eventHandler);
+
+    std::function<void(sdbusplus::message::message&)> powerEventHandler =
+        [&](sdbusplus::message::message& message)
+    {
+        std::string objectName;
+        boost::container::flat_map<std::string, std::variant<std::string>>
+            values;
+        message.read(objectName, values);
+        auto findState = values.find(dbus::power::property);
+        if (findState != values.end())
+        {
+            bool hostPowerStatus = boost::ends_with(
+                std::get<std::string>(findState->second), ".Running");
+
+            if (hostPowerStatus) {
+                manager.onHostPowerOn();
+            }
+            else {
+                manager.onHostPowerOff();
+            }
+        }
+    };
+
+    auto matchPower = std::make_unique<sdbusplus::bus::match::match>(
+        static_cast<sdbusplus::bus::bus&>(*systemBus),
+        makeStringParam("type", "signal") + "," +
+        makeStringParam("interface", dbus::properties::interface) + "," +
+        makeStringParam("path", dbus::power::path) + "," +
+        makeStringParam("arg0", dbus::power::interface),
+        powerEventHandler);
 
     io.post([&]() { createInventory(io, systemBus, manager); });
     io.run();
