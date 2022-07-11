@@ -2,10 +2,6 @@ description: >
     The interface to control SGPIO MCU used on Yadro backplanes.
 
 properties:
-    - name: FirmwareVersion
-      type: string
-      description: >
-          Version of the MCU internal software
     - name: Drives
       type: array[struct[string, string, enum[self.DriveInterface], boolean]]
       description: >

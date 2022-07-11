@@ -368,11 +368,49 @@ static const std::map<size_t, FanConDescription> FanConnectorsR220G2 = {
       .pwmIndex = 6}},
 };
 
+enum class FanPerformanceType
+{
+    UNKNOWN,
+    STANDARD,
+    HIGH,
+};
+
+struct FanModuleInfo
+{
+    FanPerformanceType type{FanPerformanceType::UNKNOWN};
+    uint32_t inletRangeMin{0};
+    uint32_t inletRangeMax{0};
+    uint32_t outletRangeMin{0};
+    uint32_t outletRangeMax{0};
+    std::string partNumber;
+    std::string prettyName;
+};
+
+static const std::vector<FanModuleInfo> EmptyDetectionFanTable = {};
+
+static const std::vector<FanModuleInfo> VegmanRx20DetectionFanTable = {
+    {.type = FanPerformanceType::STANDARD,
+     .inletRangeMin = 19000,
+     .inletRangeMax = 24000,
+     .outletRangeMin = 16200,
+     .outletRangeMax = 19800,
+     .partNumber = "ASMFAN783104A",
+     .prettyName = "Standard performance fan"},
+    {.type = FanPerformanceType::HIGH,
+     .inletRangeMin = 26550,
+     .inletRangeMax = 34000,
+     .outletRangeMin = 22950,
+     .outletRangeMax = 30800,
+     .partNumber = "ASMFAN781104A1",
+     .prettyName = "High performance fan"}
+};
+
 struct ProductDescription
 {
     std::regex pnameRegex;
     std::string productName;
     const std::map<size_t, FanConDescription>& fans;
+    const std::vector<FanModuleInfo>& detectionFanTable {EmptyDetectionFanTable};
     std::string sysFanPN;
     std::string cpuFanPN;
 };
@@ -396,15 +434,18 @@ static const std::vector<ProductDescription> productRegistry = {
     {.pnameRegex = std::regex("VEGMAN R120(?! G\\d).*"),
      .productName = "VEGMAN R120",
      .fans = FanConnectorsR120,
+     .detectionFanTable = VegmanRx20DetectionFanTable,
      .sysFanPN = "ASMFAN781104A"},
     {.pnameRegex = std::regex("VEGMAN R120 G2.*"),
      .productName = "VEGMAN R120 G2",
      .fans = FanConnectorsR120G2,
-     .sysFanPN = "ASMFAN781104A"}, // FIXME: need to know actual PN
+     .detectionFanTable = VegmanRx20DetectionFanTable,
+     .sysFanPN = "ASMFAN781104A"},
     {.pnameRegex = std::regex("VEGMAN R220 G2.*"),
      .productName = "VEGMAN R220 G2",
      .fans = FanConnectorsR220G2,
-     .sysFanPN = "ASMFAN781102A"}, // FIXME: need to know actual PN
+     .detectionFanTable = VegmanRx20DetectionFanTable,
+     .sysFanPN = "ASMFAN781102A"},
     {.pnameRegex = std::regex("TATLIN\\.ARCHIVE\\.XS.*"),
      .productName = "TATLIN.ARCHIVE.XS",
      .fans = FanConnectorsS220,

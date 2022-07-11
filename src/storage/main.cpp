@@ -7,9 +7,11 @@
 #include "com/yadro/HWManager/StorageManager/server.hpp"
 #include "com/yadro/Inventory/Manager/server.hpp"
 #include "common.hpp"
+#include "common_swupd.hpp"
 #include "dbus.hpp"
 #include "inventory.hpp"
 #include "xyz/openbmc_project/Common/error.hpp"
+#include "xyz/openbmc_project/Software/Version/server.hpp"
 
 #include <boost/algorithm/string.hpp>
 #include <phosphor-logging/log.hpp>
@@ -18,8 +20,10 @@
 #include <sdeventplus/event.hpp>
 #include <sdeventplus/exception.hpp>
 #include <sdeventplus/source/event.hpp>
+#include <sdeventplus/source/signal.hpp>
 #include <sdeventplus/utility/timer.hpp>
 
+#include <filesystem>
 #include <fstream>
 #include <streambuf>
 #include <string>
@@ -27,6 +31,7 @@
 using namespace phosphor::logging;
 using namespace sdbusplus::xyz::openbmc_project::Common::Error;
 namespace sdbusRule = sdbusplus::bus::match::rules;
+namespace fs = std::filesystem;
 
 constexpr auto clockId = sdeventplus::ClockId::RealTime;
 using Timer = sdeventplus::utility::Timer<clockId>;
@@ -53,15 +58,19 @@ class Manager : InventoryManagerServer, StorageManagerServer
     void resetDriveLocationLEDs();
 
     void applyConfiguration();
+    void refresh();
 
   private:
     sdbusplus::bus::bus& bus;
     sdeventplus::Event& event;
     std::vector<std::unique_ptr<sdbusplus::bus::match_t>> matches;
     sdeventplus::utility::Timer<sdeventplus::ClockId::Monotonic> readDelayTimer;
+    sdeventplus::utility::Timer<sdeventplus::ClockId::Monotonic> refreshTimer;
+    void softwareAdded(sdbusplus::message::message& msg);
 
     std::vector<std::shared_ptr<StorageDrive>> drives;
-    std::map<uint32_t, std::shared_ptr<BackplaneController>> bplMCUs;
+    std::map<std::string, std::shared_ptr<BackplaneController>> bplMCUs;
+    std::map<std::string, std::shared_ptr<SoftwareObject>> software;
 
     void hostPowerChanged(bool powered);
     PowerState powerState;
@@ -88,7 +97,9 @@ Manager::Manager(sdbusplus::bus::bus& bus, sdeventplus::Event& event) :
     StorageManagerServer(bus, dbus::stormgr::path), bus(bus), event(event),
     powerState(bus),
     readDelayTimer(event,
-                   std::bind(std::mem_fn(&Manager::applyConfiguration), this))
+                   std::bind(std::mem_fn(&Manager::applyConfiguration), this)),
+    refreshTimer(event, std::bind(std::mem_fn(&Manager::refresh), this),
+                 std::chrono::seconds(10))
 {
     matches.emplace_back(std::make_unique<sdbusplus::bus::match_t>(
         bus,
@@ -99,6 +110,10 @@ Manager::Manager(sdbusplus::bus::bus& bus, sdeventplus::Event& event) :
         [this](sdbusplus::message::message&) {
             readDelayTimer.restartOnce(readConfigDelay);
         }));
+    matches.emplace_back(std::make_unique<sdbusplus::bus::match_t>(
+        bus,
+        sdbusRule::interfacesAdded() + sdbusRule::path(dbus::software::path),
+        [this](sdbusplus::message::message& msg) { softwareAdded(msg); }));
 }
 
 void Manager::applyConfiguration()
@@ -210,16 +225,20 @@ void Manager::applyConfiguration()
                 entry("BUS=%llu", i2cBus), entry("ADDR=%llu", i2cAddr));
             continue;
         }
-        const uint32_t key = (i2cBus & 0xFFFF) << 16 | (i2cAddr & 0xFFFF);
         BackplaneControllerConfig config = {.channels = channels,
                                             .haveDriveI2C = haveDriveI2C,
                                             .softwarePowerGood =
                                                 softwarePowerGood};
-        auto it = bplMCUs.find(key);
+        std::ostringstream ss;
+        ss << "MCU_" << i2cBus << "_" << std::hex << i2cAddr;
+        const std::string name = ss.str();
+
+        auto it = bplMCUs.find(name);
         if (it == bplMCUs.end())
         {
-            bplMCUs[key] = std::make_shared<BackplaneController>(
-                bus, i2cBus, i2cAddr, config);
+            fs::path p(path);
+            bplMCUs[name] = std::make_shared<BackplaneController>(
+                bus, i2cBus, i2cAddr, name, config, p.parent_path().string());
         }
         else
         {
@@ -231,6 +250,115 @@ void Manager::applyConfiguration()
         powerState.addCallback(
             "manager",
             std::bind(&Manager::hostPowerChanged, this, std::placeholders::_1));
+    }
+}
+
+void Manager::refresh()
+{
+    try
+    {
+        for (const auto& [_, mcu] : bplMCUs)
+        {
+            mcu->refresh();
+        }
+    }
+    catch (...)
+    {}
+}
+
+/**
+ * @brief Callback to be called when new firmware images placed to the system
+ *
+ */
+void Manager::softwareAdded(sdbusplus::message::message& msg)
+{
+    using SVersion = sdbusplus::xyz::openbmc_project::Software::server::Version;
+    using VersionPurpose = SVersion::VersionPurpose;
+
+    sdbusplus::message::object_path objPath;
+    auto purpose = VersionPurpose::Unknown;
+    std::string version;
+    std::map<std::string,
+             std::map<std::string, sdbusplus::message::variant<std::string>>>
+        interfaces;
+    msg.read(objPath, interfaces);
+    std::string path(std::move(objPath));
+    std::string filePath;
+
+    for (const auto& intf : interfaces)
+    {
+        if (intf.first == dbus::software::versionIface)
+        {
+            for (const auto& property : intf.second)
+            {
+                if (property.first == "Purpose")
+                {
+                    purpose = SVersion::convertVersionPurposeFromString(
+                        std::get<std::string>(property.second));
+                }
+                else if (property.first == "Version")
+                {
+                    version = std::get<std::string>(property.second);
+                }
+            }
+        }
+        else if (intf.first == dbus::software::filepathIface)
+        {
+            for (const auto& property : intf.second)
+            {
+                if (property.first == "Path")
+                {
+                    filePath = std::get<std::string>(property.second);
+                }
+            }
+        }
+    }
+
+    if (version.empty() || filePath.empty() ||
+        !(purpose == VersionPurpose::Other ||
+          purpose == VersionPurpose::System))
+    {
+        return;
+    }
+
+    // Version id is the last item in the path
+    auto pos = path.rfind("/");
+    if (pos == std::string::npos)
+    {
+        log<level::ERR>("No version id found in object path",
+                        entry("OBJPATH=%s", path.c_str()));
+        return;
+    }
+
+    auto versionId = path.substr(pos + 1);
+    fs::path firmwareDir(filePath);
+
+    std::vector<std::string> images;
+    std::regex search("(.+)\\.bin$");
+    std::smatch match;
+    for (auto const& p : fs::directory_iterator{firmwareDir})
+    {
+        fs::path path = p.path();
+        std::string filename = path.filename().string();
+        if (std::regex_match(filename, match, search))
+        {
+            std::ssub_match image = match[1];
+            images.emplace_back(image.str());
+        }
+    }
+
+    for (const auto& [name, mcu] : bplMCUs)
+    {
+        std::string mcuType = mcu->getType();
+        auto it = std::find(images.begin(), images.end(), mcuType);
+        if (it != images.end())
+        {
+            software[versionId + "_" + name] = std::make_unique<SoftwareObject>(
+                bus,
+                dbusEscape(std::string(dbus::software::path) + "/" + versionId +
+                           "/" + name),
+                filePath, version, mcuType, purpose, mcu);
+        }
     }
 }
 
@@ -254,6 +382,7 @@ void Manager::rescan()
     while (std::getline(dataFile, line))
     {
         std::vector<std::string> entryFields;
+        rtrim(line);
         boost::split(entryFields, line, boost::is_any_of(";"));
         if (entryFields.size() == 1)
         {
@@ -352,6 +481,12 @@ void Manager::hostPowerChanged(bool powered)
     }
 }
 
+static void signalHandler(sdeventplus::source::Signal& source,
+                          const struct signalfd_siginfo*)
+{
+    source.get_event().exit(EXIT_SUCCESS);
+}
+
 /**
  * @brief Application entry point
  *
@@ -359,9 +494,28 @@ void Manager::hostPowerChanged(bool powered)
  */
 int main()
 {
+    sigset_t ss;
+
+    if (sigemptyset(&ss) < 0 || sigaddset(&ss, SIGTERM) < 0 ||
+        sigaddset(&ss, SIGINT) < 0 || sigaddset(&ss, SIGCHLD) < 0)
+    {
+        log<level::ERR>("ERROR: Failed to setup signal handlers",
+                        entry("REASON=%d", strerror(errno)));
+        return EXIT_FAILURE;
+    }
+
+    if (sigprocmask(SIG_BLOCK, &ss, nullptr) < 0)
+    {
+        log<level::ERR>("ERROR: Failed to block signals",
+                        entry("REASON=%d", strerror(errno)));
+        return EXIT_FAILURE;
+    }
+
     auto bus = sdbusplus::bus::new_default();
     auto event = sdeventplus::Event::get_default();
 
+    sdeventplus::source::Signal sigterm(event, SIGTERM, signalHandler);
+    sdeventplus::source::Signal sigint(event, SIGINT, signalHandler);
     bus.attach_event(event.get(), SD_EVENT_PRIORITY_NORMAL);
 
     sdbusplus::server::manager_t objManager(bus, "/");

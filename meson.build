@@ -9,7 +9,6 @@ project('obmc-yadro-hardware', 'cpp',
 )
 
 boost = dependency('boost', required: true)
-pdi_dep = dependency('phosphor-dbus-interfaces')
 sdbusplus_dep = dependency('sdbusplus', required: true)
 sdeventplus_dep = dependency('sdeventplus', required: true)
 pdi_dep = dependency('phosphor-dbus-interfaces', required: true)
@@ -66,12 +65,14 @@ systemd_system_unit_dir = systemd.get_pkgconfig_variable(
 subdir('service_files')
 
 incdir = include_directories('src')
+incdir_mcu = include_directories('src', 'src/mcu')
 
 executable('yadro-hw-manager',
     'src/hw/main.cpp',
     'src/hw/hw_mngr.cpp',
     'src/hw/objects.cpp',
     'src/hw/pcie_cfg.cpp',
+    'src/common.cpp',
     generated_files,
     include_directories : incdir,
     cpp_args: cpp_args,
@@ -87,13 +88,14 @@ executable('yadro-storage-manager',
     'src/storage/main.cpp',
     'src/storage/inventory.cpp',
     'src/storage/backplane_control.cpp',
-    'src/storage/backplane_mcu_driver.cpp',
-    'src/storage/backplane_mcu_driver_v0.cpp',
-    'src/storage/backplane_mcu_driver_v1.cpp',
+    'src/mcu/backplane_mcu_driver.cpp',
+    'src/mcu/backplane_mcu_driver_v0.cpp',
+    'src/mcu/backplane_mcu_driver_v1.cpp',
     'src/common.cpp',
     'src/common_i2c.cpp',
+    'src/common_swupd.cpp',
     generated_files,
-    include_directories : incdir,
+    include_directories : incdir_mcu,
     cpp_args: cpp_args,
     dependencies: [
         boost,
@@ -112,10 +114,37 @@ executable('yadro-network-adapter-manager',
     include_directories : incdir,
     cpp_args: cpp_args,
     dependencies: [
-        boost,
         sdbusplus_dep,
         pdi_dep,
         nlohmann_json
+    ],
+    install: true,
+)
+
+executable('yadro-mcu-updater',
+    'src/mcu/updater.cpp',
+    'src/mcu/backplane_mcu_driver.cpp',
+    'src/mcu/backplane_mcu_driver_v0.cpp',
+    'src/mcu/backplane_mcu_driver_v1.cpp',
+    'src/common.cpp',
+    'src/common_i2c.cpp',
+    include_directories : incdir,
+    cpp_args: cpp_args,
+    dependencies: [
+        sdbusplus_dep,
+        pdi_dep,
+        i2c
+    ],
+    install: true,
+)
+
+executable('yadro-sw-activator',
+    'src/swupd_activator.cpp',
+    include_directories : incdir,
+    cpp_args: cpp_args,
+    dependencies: [
+        sdbusplus_dep,
+        pdi_dep
     ],
     install: true,
 )

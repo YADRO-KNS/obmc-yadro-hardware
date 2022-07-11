@@ -6,6 +6,8 @@
 #include "backplane_mcu_driver.hpp"
 #include "common.hpp"
 
+#include <arpa/inet.h>
+
 #include <phosphor-logging/log.hpp>
 
 #include <cstring>
@@ -16,20 +18,21 @@ using namespace phosphor::logging;
 enum MCUProtocolV1
 {
     OPC_GET_IDENT = 0x00,
-    OPC_GET_VERSION = 0x01,
+    OPC_GET_PROT_VERSION = 0x01,
     OPC_GET_BOARD_TYPE = 0x02,
     OPC_GET_DISC_PRESENCE = 0x20,
     OPC_GET_DISC_FAILURES = 0x21,
     OPC_CLEAN_DISC_FAILURES = 0x22,
     OPC_DISC_LOCATE = 0x23,
     OPC_GET_DISC_TYPE = 0x24,
-    OPC_GET_DISC_SWAP = 0x25,
+    OPC_GET_DISC_PRESENCE_CHANGED = 0x25,
     OPC_HOST_POWER = 0x60,
+    OPC_GET_SGPIO_MAPPING = 0x61,
     OPC_GET_MCU_FW_VERSION = 0xF0,
     OPC_FLASH_ADDRESS = 0xFA,
     OPC_FLASH_DATA = 0xFD,
     OPC_FLASH_ERASE = 0xFE,
-    OPC_REBOOT = 0x41,
+    OPC_REBOOT = 0xFF,
 };
 
 #define OPC_IDENT_RESP 0xA8
@@ -48,9 +51,7 @@ uint8_t MCUProtoV1::ident()
 
 std::string MCUProtoV1::getFwVersion()
 {
-    static const std::regex isPrintableRegex("^[[:print:]]+$",
-                                             std::regex::optimize);
-    std::string version(22, '\0');
+    std::string version(32, '\0');
     int res = dev->read_i2c_block_data(
         OPC_GET_MCU_FW_VERSION, version.size(),
         reinterpret_cast<unsigned char*>(version.data()));
@@ -63,16 +64,29 @@ std::string MCUProtoV1::getFwVersion()
                         entry("REASON=%s", std::strerror(-res)));
         return std::string();
     }
-    version = rtrim(version);
-    if (!std::regex_match(version, isPrintableRegex))
+
+    rtrim(version);
+    return version;
+}
+
+std::string MCUProtoV1::getBoardType()
+{
+    std::string type(19, '\0');
+    int res =
+        dev->read_i2c_block_data(OPC_GET_BOARD_TYPE, type.size(),
+                                 reinterpret_cast<unsigned char*>(type.data()));
+
+    if (res < 0)
     {
-        log<level::INFO>(
-            "MCU Firmware version contains non-printable characters",
-            entry("I2C_DEV=%s", dev->getDevLabel().c_str()),
-            entry("VALUE=%s", version.c_str()));
+        log<level::ERR>("Failed to read board type",
+                        entry("I2C_DEV=%s", dev->getDevLabel().c_str()),
+                        entry("RESULT=%d", res),
+                        entry("REASON=%s", std::strerror(-res)));
+        return std::string();
     }
 
-    return version;
+    rtrim(type);
+    return type;
 }
 
 bool MCUProtoV1::drivePresent(int chanIndex)
@@ -190,10 +204,10 @@ bool MCUProtoV1::isStateChanged(uint32_t& cache)
         return true;
     }
 
-    int res = dev->read_byte_data(OPC_GET_DISC_SWAP);
+    int res = dev->read_byte_data(OPC_GET_DISC_PRESENCE_CHANGED);
     if (res < 0)
     {
-        log<level::ERR>("Failed to read DISC_SWAP",
+        log<level::ERR>("Failed to read DISC_PRESENCE_CHANGED",
                         entry("I2C_DEV=%s", dev->getDevLabel().c_str()),
                         entry("RESULT=%d", res),
                         entry("REASON=%s", std::strerror(-res)));
@@ -204,6 +218,97 @@ bool MCUProtoV1::isStateChanged(uint32_t& cache)
         ret = true;
     }
     return ret;
+}
+
+bool MCUProtoV1::ping()
+{
+    int res = dev->read_byte_data(OPC_GET_IDENT);
+    if (res < 0)
+    {
+        return false;
+    }
+    return true;
+}
+
+void MCUProtoV1::reboot()
+{
+    int res = dev->write_byte(OPC_REBOOT);
+    if (res < 0)
+    {
+        log<level::ERR>("Failed to send reboot command",
+                        entry("I2C_DEV=%s", dev->getDevLabel().c_str()),
+                        entry("RESULT=%d", res),
+                        entry("REASON=%s", std::strerror(-res)));
+        throw std::runtime_error("Failed to communicate with MCU");
+    }
+}
+
+void MCUProtoV1::eraseFlash()
+{
+    int res = dev->write_byte(OPC_FLASH_ERASE);
+    if (res < 0)
+    {
+        log<level::ERR>("Failed to erase MCU Flash memory",
+                        entry("I2C_DEV=%s", dev->getDevLabel().c_str()),
+                        entry("RESULT=%d", res),
+                        entry("REASON=%s", std::strerror(-res)));
+        throw std::runtime_error("Failed to communicate with MCU");
+    }
+    flashOffset = 0;
+}
+
+void MCUProtoV1::writeFlash(const char* data, uint8_t length)
+{
+    int res;
+    struct __attribute__((packed))
+    {
+        uint32_t offset;
+        uint8_t length;
+    } setLocationCommand = {.offset = htonl(flashOffset), .length = length};
+
+    uint8_t buf[length];
+
+    res = dev->write_i2c_blob(OPC_FLASH_ADDRESS, sizeof(setLocationCommand),
+                              reinterpret_cast<uint8_t*>(&setLocationCommand));
+    if (res < 0)
+    {
+        log<level::ERR>("Failed to set write region",
+                        entry("I2C_DEV=%s", dev->getDevLabel().c_str()),
+                        entry("RESULT=%d", res),
+                        entry("REASON=%s", std::strerror(-res)));
+        throw std::runtime_error("Failed to communicate with MCU");
+    }
+
+    res = dev->write_i2c_blob(
+        OPC_FLASH_DATA, length,
+        const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(data)));
+    if (res < 0)
+    {
+        log<level::ERR>("Failed write data to flash",
+                        entry("I2C_DEV=%s", dev->getDevLabel().c_str()),
+                        entry("RESULT=%d", res),
+                        entry("REASON=%s", std::strerror(-res)));
+        throw std::runtime_error("Failed to communicate with MCU");
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    res = dev->read_i2c_blob(OPC_FLASH_DATA, length, buf);
+    if (res < 0)
+    {
+        log<level::ERR>("Failed to read data from flash",
+                        entry("I2C_DEV=%s", dev->getDevLabel().c_str()),
+                        entry("RESULT=%d", res),
+                        entry("REASON=%s", std::strerror(-res)));
+        throw std::runtime_error("Failed to communicate with MCU");
+    }
+
+    if (std::memcmp(data, buf, length))
+    {
+        log<level::ERR>("Verify error during fw update",
+                        entry("I2C_DEV=%s", dev->getDevLabel().c_str()));
+        throw std::runtime_error("Failed to write MCU Flash");
+    }
+    flashOffset += length;
 }
 
 void MCUProtoV1::getDrivesPresence()

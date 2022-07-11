@@ -11,13 +11,14 @@
 #include "dbus.hpp"
 #include "xyz/openbmc_project/Common/error.hpp"
 
-#include <phosphor-logging/log.hpp>
+#include <unistd.h>
 
-#include <cstring>
+#include <phosphor-logging/log.hpp>
 
 using namespace phosphor::logging;
 using namespace sdbusplus::xyz::openbmc_project::Common::Error;
 
+static constexpr const char* updaterApp = "/usr/bin/yadro-mcu-updater";
 static constexpr int nvmeVPDAddr = 0x53;
 static std::string getNVMeSerialNumberFRU(i2cDev& dev,
                                           const unsigned char* buf);
@@ -59,7 +60,7 @@ static std::string getNVMeSerialNumber(const std::string driveBus)
     {
         sn = getNVMeSerialNumberV1A(dev, buf);
     }
-    sn = rtrim(sn);
+    rtrim(sn);
     return sn;
 }
 
@@ -210,19 +211,23 @@ static std::string getNVMeSerialNumberV1A(i2cDev& dev, const unsigned char* buf)
 }
 
 BackplaneController::BackplaneController(
-    sdbusplus::bus::bus& bus, int i2cBus, int i2cAddr,
-    const BackplaneControllerConfig& config) :
+    sdbusplus::bus::bus& bus, int i2cBus, int i2cAddr, std::string name,
+    const BackplaneControllerConfig& config, std::string inventoryItem) :
     BackplaneMCUServer(
-        bus, dbusEscape(std::string(dbus::stormgr::path) + "/backplane/MCU_" +
-                        std::to_string(i2cBus) + "_" + std::to_string(i2cAddr))
+        bus, dbusEscape(std::string(dbus::stormgr::path) + "/backplane/" + name)
                  .c_str()),
-    OperationalStatusServer(
-        bus, dbusEscape(std::string(dbus::stormgr::path) + "/backplane/MCU_" +
-                        std::to_string(i2cBus) + "_" + std::to_string(i2cAddr))
-                 .c_str()),
+    SoftwareVersionServer(bus, dbusEscape(std::string(dbus::software::path) +
+                                          "/backplane_active/" + name)
+                                   .c_str()),
     i2cBusDev("/dev/i2c-" + std::to_string(i2cBus)), i2cAddr(i2cAddr),
-    cfg(config), cachedState(0)
+    cfg(config), inventory(inventoryItem)
 {
+    std::vector<Association> assoc;
+    assoc.emplace_back("inventory", "activation", inventory);
+    associations(assoc);
+    activation(Activations::Active);
+    requestedActivation(RequestedActivations::None);
+    purpose(VersionPurpose::Other);
     refresh();
 }
 
@@ -245,6 +250,10 @@ bool BackplaneController::refresh()
 
 bool BackplaneController::doRefresh()
 {
+    if (isUpdating())
+    {
+        throw NotAllowed();
+    }
     try
     {
         auto mcu = backplaneMCU(i2cBusDev, i2cAddr);
@@ -253,12 +262,20 @@ bool BackplaneController::doRefresh()
             return false;
         }
 
-        if (firmwareVersion().empty())
+        if (version().empty())
         {
-            const auto version = mcu->getFwVersion();
-            if (!version.empty())
+            const auto fwVersion = mcu->getFwVersion();
+            if (!fwVersion.empty())
             {
-                firmwareVersion(version);
+                version(fwVersion);
+            }
+        }
+        if (extendedVersion().empty())
+        {
+            const auto backplaneControllerType = mcu->getBoardType();
+            if (!backplaneControllerType.empty())
+            {
+                extendedVersion(backplaneControllerType);
             }
         }
 
@@ -319,6 +336,10 @@ bool BackplaneController::doRefresh()
                     driveIface = DriveInterface::Unknown;
             }
 
+            if (driveIface == DriveInterface::Unknown)
+            {
+                return false;
+            }
             if (cfg.haveDriveI2C && driveIface == DriveInterface::NVMe)
             {
                 sn = readDriveSN(chanName);
@@ -390,6 +411,10 @@ int BackplaneController::channelIndexByName(const std::string& chanName)
 void BackplaneController::setDriveLocationLED(const std::string& chanName,
                                               bool assert)
 {
+    if (isUpdating())
+    {
+        throw NotAllowed();
+    }
     int chanIndex = channelIndexByName(chanName);
     if (chanIndex < 0 || chanIndex >= BackplaneMCUDriver::maxChannelsNumber)
     {
@@ -413,6 +438,10 @@ void BackplaneController::setDriveLocationLED(const std::string& chanName,
 
 bool BackplaneController::getDriveLocationLED(const std::string& chanName)
 {
+    if (isUpdating())
+    {
+        throw NotAllowed();
+    }
     bool result = false;
     int chanIndex = channelIndexByName(chanName);
     if (chanIndex < 0 || chanIndex >= BackplaneMCUDriver::maxChannelsNumber)
@@ -437,6 +466,10 @@ bool BackplaneController::getDriveLocationLED(const std::string& chanName)
 
 void BackplaneController::resetDriveLocationLEDs()
 {
+    if (isUpdating())
+    {
+        throw NotAllowed();
+    }
     try
     {
         auto mcu = backplaneMCU(i2cBusDev, i2cAddr);
@@ -451,7 +484,7 @@ void BackplaneController::resetDriveLocationLEDs()
 
 void BackplaneController::hostPowerChanged(bool powered)
 {
-    if (!cfg.softwarePowerGood)
+    if ((!cfg.softwarePowerGood) || isUpdating())
     {
         return;
     }
@@ -464,4 +497,72 @@ void BackplaneController::hostPowerChanged(bool powered)
     {
         functional(false);
     }
+}
+
+bool BackplaneController::updateImage(std::filesystem::path imagePath,
+                                      std::string imageVersion,
+                                      std::string dbusObject,
+                                      std::shared_ptr<SoftwareObject> updater)
+{
+    pid_t pid = fork();
+    if (pid == 0)
+    {
+        // clang-format off
+        execlp(updaterApp, updaterApp,
+               "-f", imagePath.string().c_str(),
+               "-b", i2cBusDev.c_str(),
+               "-a", std::to_string(i2cAddr).c_str(),
+               "-v", imageVersion.c_str(),
+               nullptr);
+        // clang-format on
+        log<level::ERR>(
+            "ERROR: execl failed", entry("BUS=%s", i2cBusDev.c_str()),
+            entry("ADDR=%d", i2cAddr), entry("REASON=%d", strerror(errno)));
+        exit(EXIT_FAILURE);
+    }
+    else if (pid < 0)
+    {
+        log<level::ERR>(
+            "ERROR: fork failed", entry("BUS=%s", i2cBusDev.c_str()),
+            entry("ADDR=%d", i2cAddr), entry("REASON=%d", strerror(errno)));
+        return false;
+    }
+    auto event = sdeventplus::Event::get_default();
+
+    int options = WEXITED | WSTOPPED | WCONTINUED;
+    updaterWatcher = sdeventplus::source::Child(
+        event, pid, options,
+        [this, updater](sdeventplus::source::Child& source,
+                        const siginfo_t* si) {
+            if ((si->si_code == CLD_EXITED) && (si->si_status == EXIT_SUCCESS))
+            {
+                updater->activation(
+                    sdbusplus::xyz::openbmc_project::Software::server::
+                        Activation::Activations::Active);
+            }
+            else
+            {
+                log<level::ERR>("Updater process failed",
+                                entry("BUS=%s", i2cBusDev.c_str()),
+                                entry("ADDR=%d", i2cAddr),
+                                entry("SIGNO=%d", si->si_signo),
+                                entry("CODE=%d", si->si_code),
+                                entry("STATUS=%d", si->si_status));
+                updater->activation(
+                    sdbusplus::xyz::openbmc_project::Software::server::
+                        Activation::Activations::Failed);
+            }
+            version(std::string());
+            extendedVersion(std::string());
+            drives(std::vector<std::tuple<std::string, std::string,
+                                          DriveInterface, bool>>());
+            updaterWatcher.reset();
+        });
+
+    return true;
+}
+
+bool BackplaneController::isUpdating()
+{
+    return updaterWatcher.has_value();
 }
