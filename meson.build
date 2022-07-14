@@ -11,7 +11,10 @@ project('obmc-yadro-hardware', 'cpp',
 boost = dependency('boost', required: true)
 pdi_dep = dependency('phosphor-dbus-interfaces')
 sdbusplus_dep = dependency('sdbusplus', required: true)
+sdeventplus_dep = dependency('sdeventplus', required: true)
 pdi_dep = dependency('phosphor-dbus-interfaces', required: true)
+i2c = meson.get_compiler('cpp').find_library('i2c')
+
 sdbusplusplus_prog = find_program('sdbus++')
 sdbusgen_prog = find_program('sdbus++-gendir')
 realpath_prog = find_program('realpath')
@@ -83,13 +86,21 @@ executable('yadro-hw-manager',
 executable('yadro-storage-manager',
     'src/storage/main.cpp',
     'src/storage/inventory.cpp',
+    'src/storage/backplane_control.cpp',
+    'src/storage/backplane_mcu_driver.cpp',
+    'src/storage/backplane_mcu_driver_v0.cpp',
+    'src/storage/backplane_mcu_driver_v1.cpp',
+    'src/common.cpp',
+    'src/common_i2c.cpp',
     generated_files,
     include_directories : incdir,
     cpp_args: cpp_args,
     dependencies: [
         boost,
         sdbusplus_dep,
-        pdi_dep
+        sdeventplus_dep,
+        pdi_dep,
+        i2c
     ],
     install: true,
 )

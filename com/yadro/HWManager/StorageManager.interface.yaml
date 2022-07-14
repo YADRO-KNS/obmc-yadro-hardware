@@ -1,0 +1,62 @@
+description: >
+    The interface to control Yadro storage subsystem.
+
+methods:
+    - name: FindDrive
+      description: >
+          Return port name where the drive is installed.
+      parameters:
+          - name: DriveSN
+            type: string
+            description: >
+                Serial number of the drive to look for
+      returns:
+          - name: Result
+            type: struct[string, string]
+            description: >
+                Port type and name
+      errors:
+          - xyz.openbmc_project.Common.Error.InvalidArgument
+          - xyz.openbmc_project.Common.Error.InternalFailure
+          - xyz.openbmc_project.Common.Error.ResourceNotFound
+
+    - name: SetDriveLocationLED
+      description: >
+          Turn On/Off drive location LED.
+      parameters:
+          - name: DriveSN
+            type: string
+            description: >
+                Serial number of the drive for which the LED is to be set
+          - name: Assert
+            type: boolean
+            description: >
+                Requested LED state
+      errors:
+          - xyz.openbmc_project.Common.Error.InvalidArgument
+          - xyz.openbmc_project.Common.Error.InternalFailure
+          - xyz.openbmc_project.Common.Error.ResourceNotFound
+
+    - name: GetDriveLocationLED
+      description: >
+          Request drive location LED status.
+      parameters:
+          - name: DriveSN
+            type: string
+            description: >
+                Serial number of the drive for which the LED is to be set
+      returns:
+          - name: Result
+            type: boolean
+            description: >
+                True if LED asserted, False otherwise
+      errors:
+          - xyz.openbmc_project.Common.Error.InvalidArgument
+          - xyz.openbmc_project.Common.Error.InternalFailure
+          - xyz.openbmc_project.Common.Error.ResourceNotFound
+
+    - name: ResetDriveLocationLEDs
+      description: >
+          Turn Off all location LEDs.
+      errors:
+          - xyz.openbmc_project.Common.Error.InternalFailure

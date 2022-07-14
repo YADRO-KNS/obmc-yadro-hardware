@@ -3,36 +3,68 @@
  * Copyright (C) 2021 YADRO.
  */
 
+#include "backplane_control.hpp"
+#include "com/yadro/HWManager/StorageManager/server.hpp"
 #include "com/yadro/Inventory/Manager/server.hpp"
+#include "common.hpp"
 #include "dbus.hpp"
 #include "inventory.hpp"
+#include "xyz/openbmc_project/Common/error.hpp"
 
 #include <boost/algorithm/string.hpp>
 #include <phosphor-logging/log.hpp>
 #include <sdbusplus/server.hpp>
+#include <sdeventplus/clock.hpp>
+#include <sdeventplus/event.hpp>
+#include <sdeventplus/exception.hpp>
+#include <sdeventplus/source/event.hpp>
+#include <sdeventplus/utility/timer.hpp>
 
 #include <fstream>
 #include <streambuf>
 #include <string>
 
 using namespace phosphor::logging;
+using namespace sdbusplus::xyz::openbmc_project::Common::Error;
+namespace sdbusRule = sdbusplus::bus::match::rules;
+
+constexpr auto clockId = sdeventplus::ClockId::RealTime;
+using Timer = sdeventplus::utility::Timer<clockId>;
+
+const std::chrono::seconds readConfigDelay(5);
 
 static constexpr const char* storageDataFile = "/var/lib/inventory/storage.csv";
 
-using StorageManagerServer = sdbusplus::server::object_t<
+using InventoryManagerServer = sdbusplus::server::object_t<
     sdbusplus::com::yadro::Inventory::server::Manager>;
+using StorageManagerServer = sdbusplus::server::object_t<
+    sdbusplus::com::yadro::HWManager::server::StorageManager>;
 
-class Manager : StorageManagerServer
+class Manager : InventoryManagerServer, StorageManagerServer
 {
   public:
-    Manager(sdbusplus::bus::bus& bus) :
-        StorageManagerServer(bus, dbus::stormgr::path), bus(bus)
-    {}
+    Manager(sdbusplus::bus::bus& bus, sdeventplus::Event& event);
+    // com.yadro.Inventory.Manager
     void rescan();
+    // com.yadro.HWManager.StorageManager
+    std::tuple<std::string, std::string> findDrive(std::string driveSN);
+    void setDriveLocationLED(std::string driveSN, bool assert);
+    bool getDriveLocationLED(std::string driveSN);
+    void resetDriveLocationLEDs();
+
+    void applyConfiguration();
 
   private:
     sdbusplus::bus::bus& bus;
+    sdeventplus::Event& event;
+    std::vector<std::unique_ptr<sdbusplus::bus::match_t>> matches;
+    sdeventplus::utility::Timer<sdeventplus::ClockId::Monotonic> readDelayTimer;
+
     std::vector<std::shared_ptr<StorageDrive>> drives;
+    std::map<uint32_t, std::shared_ptr<BackplaneController>> bplMCUs;
+
+    void hostPowerChanged(bool powered);
+    PowerState powerState;
 };
 
 enum Fields
@@ -46,6 +78,161 @@ enum Fields
     sizeBytes,
     count
 };
+
+/**
+ * @brief Constructor
+ *
+ */
+Manager::Manager(sdbusplus::bus::bus& bus, sdeventplus::Event& event) :
+    InventoryManagerServer(bus, dbus::stormgr::path),
+    StorageManagerServer(bus, dbus::stormgr::path), bus(bus), event(event),
+    powerState(bus),
+    readDelayTimer(event,
+                   std::bind(std::mem_fn(&Manager::applyConfiguration), this))
+{
+    matches.emplace_back(std::make_unique<sdbusplus::bus::match_t>(
+        bus,
+        sdbusRule::type::signal() + sdbusRule::member("PropertiesChanged") +
+            sdbusRule::path_namespace(dbus::inventory::pathBase) +
+            sdbusRule::argN(0, dbus::configuration::bplmcu::interface) +
+            sdbusRule::interface(dbus::properties::interface),
+        [this](sdbusplus::message::message&) {
+            readDelayTimer.restartOnce(readConfigDelay);
+        }));
+}
+
+void Manager::applyConfiguration()
+{
+    bool softwarePowerGoodRequested = false;
+    SubTreeType objects;
+    auto getObjects =
+        bus.new_method_call(dbus::mapper::busName, dbus::mapper::path,
+                            dbus::mapper::interface, dbus::mapper::subtree);
+    getObjects.append(
+        dbus::inventory::pathBase, 0,
+        std::array<std::string, 1>{dbus::configuration::bplmcu::interface});
+
+    try
+    {
+        log<level::DEBUG>(
+            "Calling GetSubTree for YadroBackplaneMCU configuration");
+        bus.call(getObjects /*, dbusTimeout*/).read(objects);
+        log<level::DEBUG>("GetSubTree call done");
+    }
+    catch (const sdbusplus::exception::SdBusError& ex)
+    {
+        log<level::ERR>("Error while calling GetSubTree",
+                        entry("WHAT=%s", ex.what()));
+        return;
+    }
+
+    for (const auto& [path, objDict] : objects)
+    {
+        const std::string& owner = objDict.begin()->first;
+        DbusProperties data;
+        auto getProperties = bus.new_method_call(owner.c_str(), path.c_str(),
+                                                 dbus::properties::interface,
+                                                 dbus::properties::getAll);
+        getProperties.append(dbus::configuration::bplmcu::interface);
+
+        try
+        {
+            log<level::DEBUG>("Calling GetAll for YadroBackplaneMCU object");
+            bus.call(getProperties /*, dbusTimeout*/).read(data);
+            log<level::DEBUG>("GetAll call done");
+        }
+        catch (const sdbusplus::exception::exception& ex)
+        {
+            log<level::ERR>(
+                "Error while calling GetAll",
+                entry("SERVICE=%s", owner.c_str()),
+                entry("PATH=%s", path.c_str()),
+                entry("INTERFACE=%s", dbus::configuration::bplmcu::interface),
+                entry("WHAT=%s", ex.description()));
+            return;
+        }
+
+        uint64_t i2cBus(std::numeric_limits<uint64_t>::max());
+        uint64_t i2cAddr(std::numeric_limits<uint64_t>::max());
+        std::map<int, std::string> channels;
+        bool haveDriveI2C(false);
+        bool softwarePowerGood(false);
+
+        for (const auto& [prop, value] : data)
+        {
+            if (prop == dbus::configuration::bplmcu::properties::bus)
+            {
+                i2cBus = std::get<uint64_t>(value);
+            }
+            else if (prop == dbus::configuration::bplmcu::properties::addr)
+            {
+                i2cAddr = std::get<uint64_t>(value);
+            }
+            else if (prop == dbus::configuration::bplmcu::properties::channels)
+            {
+                std::vector<std::string> tmp;
+                tmp = std::get<std::vector<std::string>>(value);
+                int chanIndex = 0;
+                for (const auto& chan : tmp)
+                {
+                    // skip channel if the name is not specified in config
+                    if (!chan.empty())
+                    {
+                        channels[chanIndex] = chan;
+                    }
+                    chanIndex++;
+                }
+            }
+            else if (prop ==
+                     dbus::configuration::bplmcu::properties::haveDriveI2C)
+            {
+                haveDriveI2C = std::get<bool>(value);
+            }
+            else if (prop ==
+                     dbus::configuration::bplmcu::properties::softwarePowerGood)
+            {
+                softwarePowerGood = std::get<bool>(value);
+                if (softwarePowerGood)
+                {
+                    softwarePowerGoodRequested = true;
+                }
+            }
+        }
+
+        if ((i2cBus == std::numeric_limits<uint64_t>::max()) ||
+            (i2cAddr == std::numeric_limits<uint64_t>::max()))
+        {
+            log<level::ERR>(
+                "Required fields not specified for backplane MCU",
+                entry("SERVICE=%s", owner.c_str()),
+                entry("PATH=%s", path.c_str()),
+                entry("INTERFACE=%s", dbus::configuration::bplmcu::interface),
+                entry("BUS=%llu", i2cBus), entry("ADDR=%llu", i2cAddr));
+            continue;
+        }
+        const uint32_t key = (i2cBus & 0xFFFF) << 16 | (i2cAddr & 0xFFFF);
+        BackplaneControllerConfig config = {.channels = channels,
+                                            .haveDriveI2C = haveDriveI2C,
+                                            .softwarePowerGood =
+                                                softwarePowerGood};
+        auto it = bplMCUs.find(key);
+        if (it == bplMCUs.end())
+        {
+            bplMCUs[key] = std::make_shared<BackplaneController>(
+                bus, i2cBus, i2cAddr, config);
+        }
+        else
+        {
+            it->second->updateConfig(config);
+        }
+    }
+    if (softwarePowerGoodRequested)
+    {
+        powerState.addCallback(
+            "manager",
+            std::bind(&Manager::hostPowerChanged, this, std::placeholders::_1));
+    }
+}
 
 /**
  * @brief Find storage drives information and create corresponding dbus objects
@@ -86,6 +273,85 @@ void Manager::rescan()
     }
 }
 
+std::tuple<std::string, std::string> Manager::findDrive(std::string driveSN)
+{
+    if (driveSN.empty())
+    {
+        throw InvalidArgument();
+    }
+    for (const auto& [_, mcu] : bplMCUs)
+    {
+        auto chanName = mcu->findChannelByDriveSN(driveSN);
+        if (!chanName.empty())
+        {
+            auto found = chanName.find('_');
+            if (found != std::string::npos)
+            {
+                std::string type = chanName.substr(0, found);
+                std::string name = chanName.substr(found + 1);
+                return std::make_tuple(type, name);
+            }
+            else
+            {
+                return std::make_tuple(std::string(), chanName);
+            }
+        }
+    }
+    throw ResourceNotFound();
+}
+
+void Manager::setDriveLocationLED(std::string driveSN, bool assert)
+{
+    if (driveSN.empty())
+    {
+        throw InvalidArgument();
+    }
+    for (const auto& [_, mcu] : bplMCUs)
+    {
+        auto chanName = mcu->findChannelByDriveSN(driveSN);
+        if (!chanName.empty())
+        {
+            mcu->setDriveLocationLED(chanName, assert);
+            return;
+        }
+    }
+    throw ResourceNotFound();
+}
+
+bool Manager::getDriveLocationLED(std::string driveSN)
+{
+    if (driveSN.empty())
+    {
+        throw InvalidArgument();
+    }
+    for (const auto& [_, mcu] : bplMCUs)
+    {
+        auto chanName = mcu->findChannelByDriveSN(driveSN);
+        if (!chanName.empty())
+        {
+            return mcu->getDriveLocationLED(chanName);
+        }
+    }
+    throw ResourceNotFound();
+    return false;
+}
+
+void Manager::resetDriveLocationLEDs()
+{
+    for (const auto& [_, mcu] : bplMCUs)
+    {
+        mcu->resetDriveLocationLEDs();
+    }
+}
+
+void Manager::hostPowerChanged(bool powered)
+{
+    for (const auto& [chan, mcu] : bplMCUs)
+    {
+        mcu->hostPowerChanged(powered);
+    }
+}
+
 /**
  * @brief Application entry point
  *
@@ -94,17 +360,16 @@ void Manager::rescan()
 int main()
 {
     auto bus = sdbusplus::bus::new_default();
+    auto event = sdeventplus::Event::get_default();
+
+    bus.attach_event(event.get(), SD_EVENT_PRIORITY_NORMAL);
+
     sdbusplus::server::manager_t objManager(bus, "/");
 
-    bus.request_name(dbus::stormgr::busName);
-    Manager storageManager(bus);
-
+    Manager storageManager(bus, event);
     storageManager.rescan();
-    while (1)
-    {
-        bus.process_discard();
-        bus.wait();
-    }
+    storageManager.applyConfiguration();
 
-    return 0;
+    bus.request_name(dbus::stormgr::busName);
+    return event.loop();
 }
