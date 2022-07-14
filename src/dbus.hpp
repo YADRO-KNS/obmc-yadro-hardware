@@ -60,25 +60,42 @@ namespace inventory
 constexpr const char* pathBase = "/xyz/openbmc_project/inventory";
 constexpr const char* path =
     "/xyz/openbmc_project/inventory/system/chassis/motherboard";
-const constexpr char* interface = "xyz.openbmc_project.Inventory.Item";
+constexpr const char* interface = "xyz.openbmc_project.Inventory.Item";
 namespace properties
 {
-const constexpr char* PrettyName = "PrettyName";
-const constexpr char* Present = "Present";
+constexpr const char* PrettyName = "PrettyName";
+constexpr const char* Present = "Present";
 } // namespace properties
 } // namespace inventory
+
+namespace configuration
+{
+namespace bplmcu
+{
+constexpr const char* interface =
+    "xyz.openbmc_project.Configuration.YadroBackplaneMCU";
+namespace properties
+{
+constexpr const char* bus = "Bus";
+constexpr const char* addr = "Address";
+constexpr const char* channels = "ChannelNames";
+constexpr const char* haveDriveI2C = "HaveDriveI2C";
+constexpr const char* softwarePowerGood = "SoftwarePowerGood";
+} // namespace properties
+} // namespace bplmcu
+} // namespace configuration
 
 namespace fru
 {
 constexpr const char* busName = "xyz.openbmc_project.FruDevice";
 constexpr const char* path = "/xyz/openbmc_project/FruDevice";
-const constexpr char* interface = "xyz.openbmc_project.FruDevice";
+constexpr const char* interface = "xyz.openbmc_project.FruDevice";
 } // namespace fru
 
 namespace pid
 {
 constexpr const char* path = "/xyz/openbmc_project/inventory/system/board";
-const constexpr char* interface = "xyz.openbmc_project.Configuration.Pid.Zone";
+constexpr const char* interface = "xyz.openbmc_project.Configuration.Pid.Zone";
 namespace properties
 {
 const constexpr char* MinThermalOutput = "MinThermalOutput";
@@ -92,11 +109,23 @@ namespace properties
 constexpr const char* bifurcation = "Bifurcation";
 } // namespace properties
 } // namespace pcie_cfg
+
+namespace power
+{
+constexpr const char* busname = "xyz.openbmc_project.State.Host";
+constexpr const char* interface = "xyz.openbmc_project.State.Host";
+constexpr const char* path = "/xyz/openbmc_project/state/host0";
+namespace properties
+{
+const static constexpr char* state = "CurrentHostState";
+} // namespace properties
+} // namespace power
 } // namespace dbus
 
 using Interface = std::string;
 using PropertyName = std::string;
-using DbusPropVariant = std::variant<std::string, uint32_t, bool, double>;
+using DbusPropVariant = std::variant<uint32_t, uint64_t, bool, double,
+                                     std::string, std::vector<std::string>>;
 using DbusProperties = std::map<PropertyName, DbusPropVariant>;
 using ManagedObjectType = std::map<sdbusplus::message::object_path,
                                    std::map<Interface, DbusProperties>>;
