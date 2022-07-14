@@ -1,0 +1,25 @@
+description: >
+    The interface to control SGPIO MCU used on Yadro backplanes.
+
+properties:
+    - name: FirmwareVersion
+      type: string
+      description: >
+          Version of the MCU internal software
+    - name: Drives
+      type: array[struct[string, string, enum[self.DriveInterface], boolean]]
+      description: >
+          The list indicates states of the backplane ports. The list contains
+          tuples of [Port, SN, DriveInterface, Failed], where Port is the
+          channel name, DriveInterface indicates drive type, connected to the
+          port and Failed indicates if drive had fails.
+
+enumerations:
+    - name: DriveInterface
+      description: >
+        Interface, used to connect drive
+      values:
+        - name: Unknown
+        - name: NoDisk
+        - name: SATA_SAS
+        - name: NVMe
