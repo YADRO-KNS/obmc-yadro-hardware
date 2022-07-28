@@ -29,6 +29,14 @@ constexpr const char* busName = "com.yadro.HWManager";
 constexpr const char* path = "/com/yadro/hw_manager";
 } // namespace hwmgr
 
+namespace power
+{
+const static constexpr char* busname = "xyz.openbmc_project.State.Host";
+const static constexpr char* interface = "xyz.openbmc_project.State.Host";
+const static constexpr char* path = "/xyz/openbmc_project/state/host0";
+const static constexpr char* property = "CurrentHostState";
+} // namespace power
+
 namespace stormgr
 {
 constexpr const char* busName = "com.yadro.Storage";

@@ -12,6 +12,23 @@
 
 struct ProductDescription;
 
+enum class FanState
+{
+    uninit,
+    init,
+    detect,
+    normal,
+};
+
+struct FanFeature
+{
+    uint32_t initialPwm{0};
+    uint32_t maxInletRpm{0};
+    uint32_t maxOutletRpm{0};
+    std::string partNumber;
+    std::string prettyName;
+};
+
 struct ChassisPIDZone
 {
     std::vector<size_t> fanConnector;
@@ -81,6 +98,10 @@ class HWManager
     void setProduct(const std::string& pname);
     bool setOption(const OptionType& optType, const int& instance,
                    const std::string& value);
+    void onHostPowerOn();
+    void onHostPowerOff();
+    void runDetectFans();
+    FanState getDetectFanState();
     void publish();
 
     HWManagerData config;
@@ -89,6 +110,14 @@ class HWManager
     void clear();
     void setFanSpeed();
     void setFanSpeedDelayed();
+    void detectFansDelayed(uint32_t delaySecs);
+    void processDetectState();
+    bool processSystemFans();
+    void updateFansInfo();
+
+    FanState detectFansState{FanState::uninit};
+    std::map<size_t, FanFeature> fanFeatures;
+    uint32_t numErrorAttempts{0};
 
     boost::asio::io_service& io;
     sdbusplus::bus::bus& bus;
