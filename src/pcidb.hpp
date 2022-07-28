@@ -14,7 +14,10 @@ using namespace phosphor::logging;
 
 /**
  * @brief Lookup the pciids database to retrieve the corresponding Vendor
- *        and Model by VID,DID
+ *        and Model by VID/DID
+ *
+ * @note VID and DID should be in 4 charters hex representation. They may be
+ * with or without '0x' prefix but both should be in same form.
  *
  * @param[in] vendorId                                  - vendor ID
  * @param[in] deviceId                                  - device ID (optional)
@@ -33,7 +36,12 @@ static const std::pair<std::string, std::string>
     static const size_t wordLen = 4;
     static const size_t sepLen = 2;
     /* The 0x prefix of the VID: `0x____` */
-    static const size_t hexPrefixLen = 2;
+    static const std::string hexPrefix = "0x";
+    size_t prefixLen = false;
+    if (vendorId.compare(0, hexPrefix.length(), hexPrefix) == 0)
+    {
+        prefixLen = hexPrefix.length();
+    }
 
     std::string line;
     std::string vendorName;
@@ -48,7 +56,7 @@ static const std::pair<std::string, std::string>
     while (std::getline(idfile, line))
     {
         if (vendorName.empty() &&
-            (line.compare(vidPrefixLen, wordLen, vendorId, hexPrefixLen) == 0))
+            (line.compare(vidPrefixLen, wordLen, vendorId, prefixLen) == 0))
         {
             vendorName = line.substr(vidPrefixLen + wordLen + sepLen);
             if (line.compare(vidPrefixLen + wordLen, sepLen, "  ") != 0)
@@ -61,7 +69,7 @@ static const std::pair<std::string, std::string>
                  line.size() > didPrefixLen)
         {
             if (0 ==
-                line.compare(didPrefixLen, wordLen, deviceId, hexPrefixLen))
+                line.compare(didPrefixLen, wordLen, deviceId, prefixLen))
             {
                 modelName = line.substr(didPrefixLen + wordLen + sepLen);
                 if (line.compare(didPrefixLen + wordLen, sepLen, "  ") != 0)
