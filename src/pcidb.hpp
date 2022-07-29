@@ -14,7 +14,10 @@ using namespace phosphor::logging;
 
 /**
  * @brief Lookup the pciids database to retrieve the corresponding Vendor
- *        and Model by VID,DID
+ *        and Model by VID/DID
+ *
+ * @note VID and DID should be in 4 charters hex representation. They may be
+ * with or without '0x' prefix but both should be in same form.
  *
  * @param[in] vendorId                                  - vendor ID
  * @param[in] deviceId                                  - device ID (optional)
@@ -33,7 +36,11 @@ static const std::pair<std::string, std::string>
     static const size_t wordLen = 4;
     static const size_t sepLen = 2;
     /* The 0x prefix of the VID: `0x____` */
-    static const size_t hexPrefixLen = 2;
+    size_t hexPrefixLen = 0;
+    if (vendorId.compare(0, 2, vendorId) == 0)
+    {
+        hexPrefixLen = 2;
+    }
 
     std::string line;
     std::string vendorName;
