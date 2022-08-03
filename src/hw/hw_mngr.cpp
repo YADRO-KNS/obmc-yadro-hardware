@@ -1,6 +1,6 @@
 /*
  * SPDX-License-Identifier: Apache-2.0
- * Copyright (C) 2021 YADRO.
+ * Copyright (C) 2021, KNS Group LLC (YADRO)
  */
 
 #include "hw_mngr.hpp"
