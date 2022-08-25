@@ -177,14 +177,18 @@ void MCUProtoV1::setHostPowerState(bool powered)
     }
 }
 
-bool MCUProtoV1::ifStateChanged(uint32_t& cache)
+bool MCUProtoV1::isStateChanged(uint32_t& cache)
 {
     bool ret;
     getDrivesPresence();
     getDrivesFailures();
     uint32_t newState = dPresence | (dFailures >> 8);
-    ret = newState == cache;
+    ret = (newState != cache);
     cache = newState;
+    if (ret)
+    {
+        return true;
+    }
 
     int res = dev->read_byte_data(OPC_GET_DISC_SWAP);
     if (res < 0)

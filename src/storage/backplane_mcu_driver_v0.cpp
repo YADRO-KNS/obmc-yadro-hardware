@@ -175,13 +175,13 @@ void MCUProtoV0::setHostPowerState(bool powered)
     }
 }
 
-bool MCUProtoV0::ifStateChanged(uint32_t& cache)
+bool MCUProtoV0::isStateChanged(uint32_t& cache)
 {
     bool res;
     getDrivesPresence();
     getDrivesFailures();
     uint32_t newState = dPresence | (dFailures >> 8);
-    res = newState == cache;
+    res = (newState != cache);
     cache = newState;
     return res;
 }

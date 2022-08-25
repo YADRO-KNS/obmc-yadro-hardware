@@ -264,7 +264,7 @@ bool BackplaneController::doRefresh()
 
         std::vector<std::tuple<std::string, std::string, DriveInterface, bool>>
             drivesState;
-        if (mcu->ifStateChanged(cachedState) && (!drives().empty()))
+        if (!(mcu->isStateChanged(cachedState) || drives().empty()))
         {
             return true;
         }

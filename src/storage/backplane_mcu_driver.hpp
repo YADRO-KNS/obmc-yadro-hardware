@@ -51,7 +51,7 @@ class BackplaneMCUDriver
     virtual bool getDriveLocationLED(int chanIndex) = 0;
     virtual void resetDriveLocationLEDs() = 0;
     virtual void setHostPowerState(bool powered) = 0;
-    virtual bool ifStateChanged(uint32_t& cache) = 0;
+    virtual bool isStateChanged(uint32_t& cache) = 0;
 
     static constexpr int maxChannelsNumber = 8;
 
@@ -75,7 +75,7 @@ class MCUProtoV0 : public BackplaneMCUDriver
     bool getDriveLocationLED(int chanIndex);
     void resetDriveLocationLEDs();
     void setHostPowerState(bool powered);
-    bool ifStateChanged(uint32_t& cache);
+    bool isStateChanged(uint32_t& cache);
 
   private:
     void getDrivesPresence();
@@ -101,7 +101,7 @@ class MCUProtoV1 : public BackplaneMCUDriver
     bool getDriveLocationLED(int chanIndex);
     void resetDriveLocationLEDs();
     void setHostPowerState(bool powered);
-    bool ifStateChanged(uint32_t& cache);
+    bool isStateChanged(uint32_t& cache);
 
   private:
     void getDrivesPresence();
