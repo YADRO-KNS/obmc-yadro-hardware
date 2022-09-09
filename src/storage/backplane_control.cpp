@@ -319,6 +319,10 @@ bool BackplaneController::doRefresh()
                     driveIface = DriveInterface::Unknown;
             }
 
+            if (driveIface == DriveInterface::Unknown)
+            {
+                return false;
+            }
             if (cfg.haveDriveI2C && driveIface == DriveInterface::NVMe)
             {
                 sn = readDriveSN(chanName);
