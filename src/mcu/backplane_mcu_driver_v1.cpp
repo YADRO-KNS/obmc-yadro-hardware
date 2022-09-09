@@ -16,20 +16,21 @@ using namespace phosphor::logging;
 enum MCUProtocolV1
 {
     OPC_GET_IDENT = 0x00,
-    OPC_GET_VERSION = 0x01,
+    OPC_GET_PROT_VERSION = 0x01,
     OPC_GET_BOARD_TYPE = 0x02,
     OPC_GET_DISC_PRESENCE = 0x20,
     OPC_GET_DISC_FAILURES = 0x21,
     OPC_CLEAN_DISC_FAILURES = 0x22,
     OPC_DISC_LOCATE = 0x23,
     OPC_GET_DISC_TYPE = 0x24,
-    OPC_GET_DISC_SWAP = 0x25,
+    OPC_GET_DISC_PRESENCE_CHANGED = 0x25,
     OPC_HOST_POWER = 0x60,
+    OPC_GET_SGPIO_MAPPING = 0x61,
     OPC_GET_MCU_FW_VERSION = 0xF0,
     OPC_FLASH_ADDRESS = 0xFA,
     OPC_FLASH_DATA = 0xFD,
     OPC_FLASH_ERASE = 0xFE,
-    OPC_REBOOT = 0x41,
+    OPC_REBOOT = 0xFF,
 };
 
 #define OPC_IDENT_RESP 0xA8
@@ -181,10 +182,10 @@ bool MCUProtoV1::isStateChanged(uint32_t& cache)
         return true;
     }
 
-    int res = dev->read_byte_data(OPC_GET_DISC_SWAP);
+    int res = dev->read_byte_data(OPC_GET_DISC_PRESENCE_CHANGED);
     if (res < 0)
     {
-        log<level::ERR>("Failed to read DISC_SWAP",
+        log<level::ERR>("Failed to read DISC_PRESENCE_CHANGED",
                         entry("I2C_DEV=%s", dev->getDevLabel().c_str()),
                         entry("RESULT=%d", res),
                         entry("REASON=%s", std::strerror(-res)));
