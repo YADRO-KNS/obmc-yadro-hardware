@@ -59,7 +59,12 @@ class i2cDev
     int read_word_data(uint8_t command);
     int write_word_data(uint8_t command, uint16_t value);
     int read_i2c_block_data(uint8_t command, uint8_t length, uint8_t* values);
+    int read_i2c_blob(uint8_t length, uint8_t* values);
     int read_i2c_blob(uint8_t command, uint8_t length, uint8_t* values);
+    int write_i2c_blob(uint8_t length, uint8_t* values);
+    int write_i2c_blob(uint8_t command, uint8_t length, uint8_t* values);
+    int i2c_transfer(uint8_t tx_len, uint8_t* tx_data, uint8_t rx_len,
+                     uint8_t* rx_data);
 
     std::string getDevLabel()
     {
@@ -84,6 +89,6 @@ class i2cDev
      * @param[in] rxDataLen - number of bytes received
      * @param[in] res - result code
      */
-    void logTransfer(uint8_t cmd, const void* txData, size_t txDataLen,
+    void logTransfer(int cmd, const void* txData, size_t txDataLen,
                      const void* rxData, size_t rxDataLen, int res);
 };
