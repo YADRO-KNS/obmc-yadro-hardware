@@ -49,7 +49,7 @@ uint8_t MCUProtoV1::ident()
 
 std::string MCUProtoV1::getFwVersion()
 {
-    std::string version(22, '\0');
+    std::string version(32, '\0');
     int res = dev->read_i2c_block_data(
         OPC_GET_MCU_FW_VERSION, version.size(),
         reinterpret_cast<unsigned char*>(version.data()));
