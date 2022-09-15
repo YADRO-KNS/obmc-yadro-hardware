@@ -9,7 +9,6 @@ project('obmc-yadro-hardware', 'cpp',
 )
 
 boost = dependency('boost', required: true)
-pdi_dep = dependency('phosphor-dbus-interfaces')
 sdbusplus_dep = dependency('sdbusplus', required: true)
 sdeventplus_dep = dependency('sdeventplus', required: true)
 pdi_dep = dependency('phosphor-dbus-interfaces', required: true)
@@ -112,7 +111,6 @@ executable('yadro-network-adapter-manager',
     include_directories : incdir,
     cpp_args: cpp_args,
     dependencies: [
-        boost,
         sdbusplus_dep,
         pdi_dep,
         nlohmann_json

@@ -7,7 +7,6 @@
 #include "dbus.hpp"
 #include "adapter.hpp"
 
-#include <boost/algorithm/string.hpp>
 #include <phosphor-logging/log.hpp>
 #include <sdbusplus/server.hpp>
 
