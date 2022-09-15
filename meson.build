@@ -118,3 +118,20 @@ executable('yadro-network-adapter-manager',
     ],
     install: true,
 )
+
+executable('yadro-mcu-updater',
+    'src/mcu/updater.cpp',
+    'src/mcu/backplane_mcu_driver.cpp',
+    'src/mcu/backplane_mcu_driver_v0.cpp',
+    'src/mcu/backplane_mcu_driver_v1.cpp',
+    'src/common.cpp',
+    'src/common_i2c.cpp',
+    include_directories : incdir,
+    cpp_args: cpp_args,
+    dependencies: [
+        sdbusplus_dep,
+        pdi_dep,
+        i2c
+    ],
+    install: true,
+)

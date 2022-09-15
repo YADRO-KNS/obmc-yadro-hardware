@@ -44,6 +44,7 @@ class BackplaneMCUDriver
     {}
 
     virtual std::string getFwVersion() = 0;
+    virtual std::string getBoardType() = 0;
     virtual bool drivePresent(int chanIndex) = 0;
     virtual bool driveFailured(int chanIndex) = 0;
     virtual DriveTypes driveType(int chanIndex) = 0;
@@ -52,6 +53,10 @@ class BackplaneMCUDriver
     virtual void resetDriveLocationLEDs() = 0;
     virtual void setHostPowerState(bool powered) = 0;
     virtual bool isStateChanged(uint32_t& cache) = 0;
+    virtual bool ping() = 0;
+    virtual void reboot() = 0;
+    virtual void eraseFlash() = 0;
+    virtual void writeFlash(const char* data, uint8_t length) = 0;
 
     static constexpr int maxChannelsNumber = 8;
 
@@ -68,6 +73,7 @@ class MCUProtoV0 : public BackplaneMCUDriver
     static uint8_t ident();
 
     std::string getFwVersion();
+    std::string getBoardType();
     bool drivePresent(int chanIndex);
     bool driveFailured(int chanIndex);
     DriveTypes driveType(int chanIndex);
@@ -76,6 +82,10 @@ class MCUProtoV0 : public BackplaneMCUDriver
     void resetDriveLocationLEDs();
     void setHostPowerState(bool powered);
     bool isStateChanged(uint32_t& cache);
+    bool ping();
+    void reboot();
+    void eraseFlash();
+    void writeFlash(const char* data, uint8_t length);
 
   private:
     void getDrivesPresence();
@@ -83,6 +93,7 @@ class MCUProtoV0 : public BackplaneMCUDriver
 
     int dPresence = -1;
     int dFailures = -1;
+    uint32_t flashOffset = 0;
 };
 
 class MCUProtoV1 : public BackplaneMCUDriver
@@ -94,6 +105,7 @@ class MCUProtoV1 : public BackplaneMCUDriver
     static uint8_t ident();
 
     std::string getFwVersion();
+    std::string getBoardType();
     bool drivePresent(int chanIndex);
     bool driveFailured(int chanIndex);
     DriveTypes driveType(int chanIndex);
@@ -102,6 +114,10 @@ class MCUProtoV1 : public BackplaneMCUDriver
     void resetDriveLocationLEDs();
     void setHostPowerState(bool powered);
     bool isStateChanged(uint32_t& cache);
+    bool ping();
+    void reboot();
+    void eraseFlash();
+    void writeFlash(const char* data, uint8_t length);
 
   private:
     void getDrivesPresence();
@@ -112,4 +128,5 @@ class MCUProtoV1 : public BackplaneMCUDriver
     int dPresence = -1;
     int dFailures = -1;
     int dTypes = -1;
+    uint32_t flashOffset = 0;
 };
