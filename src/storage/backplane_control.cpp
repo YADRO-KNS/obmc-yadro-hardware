@@ -212,7 +212,7 @@ static std::string getNVMeSerialNumberV1A(i2cDev& dev, const unsigned char* buf)
 
 BackplaneController::BackplaneController(
     sdbusplus::bus::bus& bus, int i2cBus, int i2cAddr, std::string name,
-    const BackplaneControllerConfig& config) :
+    const BackplaneControllerConfig& config, std::string inventoryItem) :
     BackplaneMCUServer(
         bus, dbusEscape(std::string(dbus::stormgr::path) + "/backplane/" + name)
                  .c_str()),
@@ -220,8 +220,11 @@ BackplaneController::BackplaneController(
                                           "/backplane_active/" + name)
                                    .c_str()),
     i2cBusDev("/dev/i2c-" + std::to_string(i2cBus)), i2cAddr(i2cAddr),
-    cfg(config)
+    cfg(config), inventory(inventoryItem)
 {
+    std::vector<Association> assoc;
+    assoc.emplace_back("inventory", "activation", inventory);
+    associations(assoc);
     activation(Activations::Active);
     requestedActivation(RequestedActivations::None);
     purpose(VersionPurpose::Other);
