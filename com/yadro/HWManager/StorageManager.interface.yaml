@@ -18,6 +18,7 @@ methods:
       errors:
           - xyz.openbmc_project.Common.Error.InvalidArgument
           - xyz.openbmc_project.Common.Error.InternalFailure
+          - xyz.openbmc_project.Common.Error.NotAllowed
           - xyz.openbmc_project.Common.Error.ResourceNotFound
 
     - name: SetDriveLocationLED
@@ -35,6 +36,7 @@ methods:
       errors:
           - xyz.openbmc_project.Common.Error.InvalidArgument
           - xyz.openbmc_project.Common.Error.InternalFailure
+          - xyz.openbmc_project.Common.Error.NotAllowed
           - xyz.openbmc_project.Common.Error.ResourceNotFound
 
     - name: GetDriveLocationLED
@@ -53,6 +55,7 @@ methods:
       errors:
           - xyz.openbmc_project.Common.Error.InvalidArgument
           - xyz.openbmc_project.Common.Error.InternalFailure
+          - xyz.openbmc_project.Common.Error.NotAllowed
           - xyz.openbmc_project.Common.Error.ResourceNotFound
 
     - name: ResetDriveLocationLEDs
@@ -60,3 +63,4 @@ methods:
           Turn Off all location LEDs.
       errors:
           - xyz.openbmc_project.Common.Error.InternalFailure
+          - xyz.openbmc_project.Common.Error.NotAllowed
