@@ -6,14 +6,22 @@
 #pragma once
 
 #include "com/yadro/HWManager/BackplaneMCU/server.hpp"
+#include "common_swupd.hpp"
 
+#include <sdeventplus/source/child.hpp>
+#include <xyz/openbmc_project/Software/Activation/server.hpp>
+#include <xyz/openbmc_project/Software/ExtendedVersion/server.hpp>
+#include <xyz/openbmc_project/Software/Version/server.hpp>
 #include <xyz/openbmc_project/State/Decorator/OperationalStatus/server.hpp>
 
 using BackplaneMCUServer = sdbusplus::server::object_t<
-    sdbusplus::com::yadro::HWManager::server::BackplaneMCU>;
-using OperationalStatusServer =
-    sdbusplus::server::object_t<sdbusplus::xyz::openbmc_project::State::
-                                    Decorator::server::OperationalStatus>;
+    sdbusplus::com::yadro::HWManager::server::BackplaneMCU,
+    sdbusplus::xyz::openbmc_project::State::Decorator::server::
+        OperationalStatus>;
+using SoftwareVersionServer = sdbusplus::server::object_t<
+    sdbusplus::xyz::openbmc_project::Software::server::Activation,
+    sdbusplus::xyz::openbmc_project::Software::server::ExtendedVersion,
+    sdbusplus::xyz::openbmc_project::Software::server::Version>;
 struct BackplaneControllerConfig
 {
     std::map<int, std::string>
@@ -34,10 +42,14 @@ struct BackplaneControllerConfig
     }
 };
 
-class BackplaneController : BackplaneMCUServer, OperationalStatusServer
+class BackplaneController :
+    BackplaneMCUServer,
+    SoftwareVersionServer,
+    public FirmwareUpdateble
 {
   public:
     BackplaneController(sdbusplus::bus::bus& bus, int i2cBus, int i2cAddr,
+                        std::string name,
                         const BackplaneControllerConfig& config);
 
     void updateConfig(const BackplaneControllerConfig& config);
@@ -47,14 +59,22 @@ class BackplaneController : BackplaneMCUServer, OperationalStatusServer
     bool getDriveLocationLED(const std::string& chanName);
     void resetDriveLocationLEDs();
     void hostPowerChanged(bool powered);
+    std::string getType()
+    {
+        return extendedVersion();
+    }
+    bool updateImage(std::filesystem::path imagePath, std::string imageVersion,
+                     std::string dbusObject,
+                     std::shared_ptr<SoftwareObject> updater);
+    bool isUpdating();
 
   private:
     std::string i2cBusDev;
     int i2cAddr;
     BackplaneControllerConfig cfg;
-
-    uint32_t cachedState; //!< cached value of MCU channels state (presence,
-                          //!< failures)
+    std::optional<sdeventplus::source::Child> updaterWatcher;
+    uint32_t cachedState = 0; //!< cached value of MCU channels state (presence,
+                              //!< failures)
 
     bool doRefresh();
     std::string readDriveSN(const std::string& chanName);

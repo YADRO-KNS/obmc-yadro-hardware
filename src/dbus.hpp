@@ -120,6 +120,13 @@ namespace properties
 const static constexpr char* state = "CurrentHostState";
 } // namespace properties
 } // namespace power
+
+namespace software
+{
+constexpr const char* path = "/xyz/openbmc_project/software";
+constexpr const char* versionIface = "xyz.openbmc_project.Software.Version";
+constexpr const char* filepathIface = "xyz.openbmc_project.Common.FilePath";
+} // namespace software
 } // namespace dbus
 
 using Interface = std::string;
