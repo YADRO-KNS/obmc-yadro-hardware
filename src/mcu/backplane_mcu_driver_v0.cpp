@@ -42,25 +42,41 @@ typedef enum
     NVME,
 } DiskStatus_t;
 
+constexpr int retryCount = 5;
+
 uint8_t MCUProtoV0::ident()
 {
     return OPC_IDENT_RESP;
 }
 
+// V0 protocol implementation is very unstable and frequently return corrupted
+// answer. Because of this some commands have a workaround that reads same
+// register several times until we get same answer twice
+
 std::string MCUProtoV0::getFwVersion()
 {
     std::string version(60, '\0');
-    int res =
-        dev->read_i2c_blob(OPC_GET_VERSION, version.size(),
-                           reinterpret_cast<unsigned char*>(version.data()));
 
-    if (res < 0)
+    for (int retry = 0; retry < retryCount; retry++)
     {
-        log<level::ERR>("Failed to read firmware version",
-                        entry("I2C_DEV=%s", dev->getDevLabel().c_str()),
-                        entry("RESULT=%d", res),
-                        entry("REASON=%s", std::strerror(-res)));
-        return std::string();
+        std::string versionTmp(60, '\0');
+        int res = dev->read_i2c_blob(
+            OPC_GET_VERSION, versionTmp.size(),
+            reinterpret_cast<unsigned char*>(versionTmp.data()));
+
+        if (res < 0)
+        {
+            log<level::ERR>("Failed to read firmware version",
+                            entry("I2C_DEV=%s", dev->getDevLabel().c_str()),
+                            entry("RESULT=%d", res),
+                            entry("REASON=%s", std::strerror(-res)));
+            return std::string();
+        }
+        if (version == versionTmp)
+        {
+            break;
+        }
+        version = versionTmp;
     }
 
     rtrim(version);
@@ -87,26 +103,38 @@ bool MCUProtoV0::driveFailured(int chanIndex)
 
 DriveTypes MCUProtoV0::driveType(int chanIndex)
 {
-    int res;
-    res = dev->write_byte_data(OPC_GET_DISC_TYPE, chanIndex);
-    if (res < 0)
+    int type(-1);
+
+    for (int retry = 0; retry < retryCount; retry++)
     {
-        log<level::ERR>("Failed to read DISC_TYPE",
-                        entry("I2C_DEV=%s", dev->getDevLabel().c_str()),
-                        entry("RESULT=%d", res),
-                        entry("REASON=%s", std::strerror(-res)));
-        throw std::runtime_error("Failed to communicate with MCU");
+        int res;
+        res = dev->write_byte_data(OPC_GET_DISC_TYPE, chanIndex);
+        if (res < 0)
+        {
+            log<level::ERR>("Failed to read DISC_TYPE",
+                            entry("I2C_DEV=%s", dev->getDevLabel().c_str()),
+                            entry("RESULT=%d", res),
+                            entry("REASON=%s", std::strerror(-res)));
+            throw std::runtime_error("Failed to communicate with MCU");
+        }
+        res = dev->read_byte();
+        if (res < 0)
+        {
+            log<level::ERR>("Failed to read DISC_TYPE",
+                            entry("I2C_DEV=%s", dev->getDevLabel().c_str()),
+                            entry("RESULT=%d", res),
+                            entry("REASON=%s", std::strerror(-res)));
+            throw std::runtime_error("Failed to communicate with MCU");
+        }
+
+        if (type == res)
+        {
+            break;
+        }
+        type = res;
     }
-    res = dev->read_byte();
-    if (res < 0)
-    {
-        log<level::ERR>("Failed to read DISC_TYPE",
-                        entry("I2C_DEV=%s", dev->getDevLabel().c_str()),
-                        entry("RESULT=%d", res),
-                        entry("REASON=%s", std::strerror(-res)));
-        throw std::runtime_error("Failed to communicate with MCU");
-    }
-    switch (res)
+
+    switch (type)
     {
         case NO_DISK:
             return DriveTypes::NoDisk;
@@ -117,7 +145,7 @@ DriveTypes MCUProtoV0::driveType(int chanIndex)
         default:
             log<level::ERR>("Unexpected DISC_TYPE",
                             entry("I2C_DEV=%s", dev->getDevLabel().c_str()),
-                            entry("RESULT=%d", res));
+                            entry("TYPE=%d", type));
     }
     return DriveTypes::Unknown;
 }
@@ -179,30 +207,46 @@ bool MCUProtoV0::isStateChanged(uint32_t& cache)
 
 void MCUProtoV0::getDrivesPresence()
 {
-    int res;
-    res = dev->read_byte_data(OPC_GET_DISC_PRESENCE);
-    if (res < 0)
+    for (int retry = 0; retry < retryCount; retry++)
     {
-        log<level::ERR>("Failed to read DISC_PRESENCE",
-                        entry("I2C_DEV=%s", dev->getDevLabel().c_str()),
-                        entry("RESULT=%d", res),
-                        entry("REASON=%s", std::strerror(-res)));
-        throw std::runtime_error("Failed to communicate with MCU");
+        int res;
+        res = dev->read_byte_data(OPC_GET_DISC_PRESENCE);
+        if (res < 0)
+        {
+            log<level::ERR>("Failed to read DISC_PRESENCE",
+                            entry("I2C_DEV=%s", dev->getDevLabel().c_str()),
+                            entry("RESULT=%d", res),
+                            entry("REASON=%s", std::strerror(-res)));
+            throw std::runtime_error("Failed to communicate with MCU");
+        }
+
+        if (dPresence == res)
+        {
+            break;
+        }
+        dPresence = res;
     }
-    dPresence = res;
 }
 
 void MCUProtoV0::getDrivesFailures()
 {
-    int res;
-    res = dev->read_byte_data(OPC_GET_DISC_FAILURES);
-    if (res < 0)
+    for (int retry = 0; retry < retryCount; retry++)
     {
-        log<level::ERR>("Failed to read DISC_FAILURES",
-                        entry("I2C_DEV=%s", dev->getDevLabel().c_str()),
-                        entry("RESULT=%d", res),
-                        entry("REASON=%s", std::strerror(-res)));
-        throw std::runtime_error("Failed to communicate with MCU");
+        int res;
+        res = dev->read_byte_data(OPC_GET_DISC_FAILURES);
+        if (res < 0)
+        {
+            log<level::ERR>("Failed to read DISC_FAILURES",
+                            entry("I2C_DEV=%s", dev->getDevLabel().c_str()),
+                            entry("RESULT=%d", res),
+                            entry("REASON=%s", std::strerror(-res)));
+            throw std::runtime_error("Failed to communicate with MCU");
+        }
+
+        if (dFailures == res)
+        {
+            break;
+        }
+        dFailures = res;
     }
-    dFailures = res;
 }
