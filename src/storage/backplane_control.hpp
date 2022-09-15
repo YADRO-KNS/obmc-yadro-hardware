@@ -9,6 +9,7 @@
 #include "common_swupd.hpp"
 
 #include <sdeventplus/source/child.hpp>
+#include <xyz/openbmc_project/Association/Definitions/server.hpp>
 #include <xyz/openbmc_project/Software/Activation/server.hpp>
 #include <xyz/openbmc_project/Software/ExtendedVersion/server.hpp>
 #include <xyz/openbmc_project/Software/Version/server.hpp>
@@ -19,6 +20,7 @@ using BackplaneMCUServer = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::State::Decorator::server::
         OperationalStatus>;
 using SoftwareVersionServer = sdbusplus::server::object_t<
+    sdbusplus::xyz::openbmc_project::Association::server::Definitions,
     sdbusplus::xyz::openbmc_project::Software::server::Activation,
     sdbusplus::xyz::openbmc_project::Software::server::ExtendedVersion,
     sdbusplus::xyz::openbmc_project::Software::server::Version>;
@@ -50,7 +52,8 @@ class BackplaneController :
   public:
     BackplaneController(sdbusplus::bus::bus& bus, int i2cBus, int i2cAddr,
                         std::string name,
-                        const BackplaneControllerConfig& config);
+                        const BackplaneControllerConfig& config,
+                        std::string inventoryItem);
 
     void updateConfig(const BackplaneControllerConfig& config);
     bool refresh();
@@ -59,6 +62,10 @@ class BackplaneController :
     bool getDriveLocationLED(const std::string& chanName);
     void resetDriveLocationLEDs();
     void hostPowerChanged(bool powered);
+    std::string getInventory()
+    {
+        return inventory;
+    }
     std::string getType()
     {
         return extendedVersion();
@@ -73,6 +80,7 @@ class BackplaneController :
     int i2cAddr;
     BackplaneControllerConfig cfg;
     std::optional<sdeventplus::source::Child> updaterWatcher;
+    std::string inventory;
     uint32_t cachedState = 0; //!< cached value of MCU channels state (presence,
                               //!< failures)
 

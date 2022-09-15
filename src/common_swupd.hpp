@@ -68,6 +68,7 @@ class SoftwareObject :
 class FirmwareUpdateble
 {
   public:
+    virtual std::string getInventory() = 0;
     virtual std::string getType() = 0;
     virtual bool updateImage(std::filesystem::path imagePath,
                              std::string imageVersion, std::string dbusObject,

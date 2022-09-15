@@ -141,6 +141,7 @@ using ObjectPath = std::string;
 using OwnerName = std::string;
 using Interfaces = std::vector<Interface>;
 using SubTreeType = std::map<ObjectPath, std::map<OwnerName, Interfaces>>;
+using Association = std::tuple<std::string, std::string, std::string>;
 
 static std::string dbusEscape(const std::string& str)
 {

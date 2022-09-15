@@ -20,6 +20,9 @@ SoftwareObject::SoftwareObject(sdbusplus::bus::bus& bus, std::string objPath,
     objectPath(objPath),
     ActivationServer(bus, objPath.c_str()), target(targetDev)
 {
+    std::vector<Association> assoc;
+    assoc.emplace_back("inventory", "activation", target->getInventory());
+    associations(assoc);
     path(filePath);
     activation(Activations::Ready);
     requestedActivation(RequestedActivations::None);

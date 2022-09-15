@@ -232,8 +232,9 @@ void Manager::applyConfiguration()
         auto it = bplMCUs.find(name);
         if (it == bplMCUs.end())
         {
+            fs::path p(path);
             bplMCUs[name] = std::make_shared<BackplaneController>(
-                bus, i2cBus, i2cAddr, name, config);
+                bus, i2cBus, i2cAddr, name, config, p.parent_path().string());
         }
         else
         {
