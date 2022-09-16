@@ -138,9 +138,11 @@ std::string getBusByChanName(const std::string& chanName);
 /**
  * @brief remove trailing special symbols from string
  *
- * @param[in] str - input string
+ * This function remove all trailing special symbols from the end of the string.
+ * It also makes sure there is no not-printable symbols within the string: all
+ * such symbols would be replaced by '_'.
+ *
+ * @param[in,out] str - input string
  * @param[in] chars - list of symbols to trim
- * @return trimmed string
  */
-std::string& rtrim(std::string& str,
-                   const std::string& chars = "\t\n\v\f\r \xFF");
+void rtrim(std::string& str, const std::string& chars = "\t\n\v\f\r \xFF");

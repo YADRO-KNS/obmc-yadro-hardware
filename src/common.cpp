@@ -165,9 +165,18 @@ std::string getBusByChanName(const std::string& chanName)
     return std::string();
 }
 
-std::string& rtrim(std::string& str, const std::string& chars)
+void rtrim(std::string& str, const std::string& chars)
 {
+    static const std::regex isPrintableRegex("^[[:print:]]+$",
+                                             std::regex::optimize);
+    static const std::regex notPrintableRegex("[^[:print:]]",
+                                              std::regex::optimize);
     str.erase(str.find_last_not_of(chars) + 1);
     str.resize(strlen(str.c_str()));
-    return str;
+    if (!std::regex_match(str, isPrintableRegex))
+    {
+        log<level::INFO>("String contains non-printable characters",
+                         entry("VALUE=%s", str.c_str()));
+        str = std::regex_replace(str, notPrintableRegex, "_");
+    }
 }

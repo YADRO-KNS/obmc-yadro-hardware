@@ -48,8 +48,6 @@ uint8_t MCUProtoV1::ident()
 
 std::string MCUProtoV1::getFwVersion()
 {
-    static const std::regex isPrintableRegex("^[[:print:]]+$",
-                                             std::regex::optimize);
     std::string version(22, '\0');
     int res = dev->read_i2c_block_data(
         OPC_GET_MCU_FW_VERSION, version.size(),
@@ -63,15 +61,8 @@ std::string MCUProtoV1::getFwVersion()
                         entry("REASON=%s", std::strerror(-res)));
         return std::string();
     }
-    version = rtrim(version);
-    if (!std::regex_match(version, isPrintableRegex))
-    {
-        log<level::INFO>(
-            "MCU Firmware version contains non-printable characters",
-            entry("I2C_DEV=%s", dev->getDevLabel().c_str()),
-            entry("VALUE=%s", version.c_str()));
-    }
 
+    rtrim(version);
     return version;
 }
 
