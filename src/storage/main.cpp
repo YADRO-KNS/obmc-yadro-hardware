@@ -254,6 +254,7 @@ void Manager::rescan()
     while (std::getline(dataFile, line))
     {
         std::vector<std::string> entryFields;
+        rtrim(line);
         boost::split(entryFields, line, boost::is_any_of(";"));
         if (entryFields.size() == 1)
         {

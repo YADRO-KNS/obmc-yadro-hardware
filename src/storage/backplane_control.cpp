@@ -59,7 +59,7 @@ static std::string getNVMeSerialNumber(const std::string driveBus)
     {
         sn = getNVMeSerialNumberV1A(dev, buf);
     }
-    sn = rtrim(sn);
+    rtrim(sn);
     return sn;
 }
 
