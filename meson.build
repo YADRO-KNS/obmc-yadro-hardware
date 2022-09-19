@@ -65,6 +65,7 @@ systemd_system_unit_dir = systemd.get_pkgconfig_variable(
 subdir('service_files')
 
 incdir = include_directories('src')
+incdir_mcu = include_directories('src', 'src/mcu')
 
 executable('yadro-hw-manager',
     'src/hw/main.cpp',
@@ -86,13 +87,13 @@ executable('yadro-storage-manager',
     'src/storage/main.cpp',
     'src/storage/inventory.cpp',
     'src/storage/backplane_control.cpp',
-    'src/storage/backplane_mcu_driver.cpp',
-    'src/storage/backplane_mcu_driver_v0.cpp',
-    'src/storage/backplane_mcu_driver_v1.cpp',
+    'src/mcu/backplane_mcu_driver.cpp',
+    'src/mcu/backplane_mcu_driver_v0.cpp',
+    'src/mcu/backplane_mcu_driver_v1.cpp',
     'src/common.cpp',
     'src/common_i2c.cpp',
     generated_files,
-    include_directories : incdir,
+    include_directories : incdir_mcu,
     cpp_args: cpp_args,
     dependencies: [
         boost,
