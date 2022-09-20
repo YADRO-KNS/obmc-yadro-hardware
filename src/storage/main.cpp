@@ -58,12 +58,14 @@ class Manager : InventoryManagerServer, StorageManagerServer
     void resetDriveLocationLEDs();
 
     void applyConfiguration();
+    void refresh();
 
   private:
     sdbusplus::bus::bus& bus;
     sdeventplus::Event& event;
     std::vector<std::unique_ptr<sdbusplus::bus::match_t>> matches;
     sdeventplus::utility::Timer<sdeventplus::ClockId::Monotonic> readDelayTimer;
+    sdeventplus::utility::Timer<sdeventplus::ClockId::Monotonic> refreshTimer;
     void softwareAdded(sdbusplus::message::message& msg);
 
     std::vector<std::shared_ptr<StorageDrive>> drives;
@@ -95,7 +97,9 @@ Manager::Manager(sdbusplus::bus::bus& bus, sdeventplus::Event& event) :
     StorageManagerServer(bus, dbus::stormgr::path), bus(bus), event(event),
     powerState(bus),
     readDelayTimer(event,
-                   std::bind(std::mem_fn(&Manager::applyConfiguration), this))
+                   std::bind(std::mem_fn(&Manager::applyConfiguration), this)),
+    refreshTimer(event, std::bind(std::mem_fn(&Manager::refresh), this),
+                 std::chrono::seconds(10))
 {
     matches.emplace_back(std::make_unique<sdbusplus::bus::match_t>(
         bus,
@@ -247,6 +251,19 @@ void Manager::applyConfiguration()
             "manager",
             std::bind(&Manager::hostPowerChanged, this, std::placeholders::_1));
     }
+}
+
+void Manager::refresh()
+{
+    try
+    {
+        for (const auto& [_, mcu] : bplMCUs)
+        {
+            mcu->refresh();
+        }
+    }
+    catch (...)
+    {}
 }
 
 /**
