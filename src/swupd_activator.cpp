@@ -13,8 +13,10 @@
 #include <set>
 
 namespace fs = std::filesystem;
-using SoftwareRequestedActivations = sdbusplus::xyz::openbmc_project::Software::
-    server::Activation::RequestedActivations;
+using Activation =
+    sdbusplus::xyz::openbmc_project::Software::server::Activation;
+using SoftwareActivations = Activation::Activations;
+using SoftwareRequestedActivations = Activation::RequestedActivations;
 
 // known limitation: the Status is common for all objects in the same Version,
 // only last one will be displayed
@@ -23,11 +25,18 @@ struct Version
     std::string version;
     std::string status;
     std::set<std::string> targets;
-    std::vector<std::pair<std::string, std::string>> objects;
+    std::vector<std::tuple<std::string,        //!< target id
+                           std::string,        //!< owner
+                           std::string,        //!< path
+                           std::string,        //!< version
+                           SoftwareActivations //!< activation
+                           >>
+        objects;
 };
 
 static auto bus = sdbusplus::bus::new_default();
 static bool yesMode = false;
+static bool verbose = false;
 
 static const std::regex yesno("^\\s*(y|n|yes|no)(\\s+.*)?$", std::regex::icase);
 
@@ -62,7 +71,8 @@ bool confirm(const char* prompt = "Do you want to continue?")
 }
 
 std::map<std::string, Version> getVersions(const std::string& versionId,
-                                           const std::string& target)
+                                           const std::string& target,
+                                           bool active = false)
 {
     SubTreeType objects;
     auto getObjects =
@@ -88,18 +98,23 @@ std::map<std::string, Version> getVersions(const std::string& versionId,
         const std::string& owner = objDict.begin()->first;
         const Interfaces& ifaces = objDict.begin()->second;
 
-        auto it = std::find(ifaces.begin(), ifaces.end(),
-                            dbus::software::filepathIface);
-        if (it == ifaces.end())
+        if (!active)
         {
-            continue;
+            auto it = std::find(ifaces.begin(), ifaces.end(),
+                                dbus::software::filepathIface);
+            if (it == ifaces.end())
+            {
+                continue;
+            }
         }
 
         std::string verId;
+        std::string targetId;
         std::string ver;
         std::string status;
         std::set<std::string> targets;
         std::string inventoryItem;
+        SoftwareActivations activation = SoftwareActivations::NotReady;
 
         // version path could be in two forms:
         // '/xyz/openbmc_project/software/<id>' or
@@ -109,12 +124,18 @@ std::map<std::string, Version> getVersions(const std::string& versionId,
         std::string parent = p.parent_path().filename();
         if (parent != "software")
         {
+            targetId = verId;
             verId = parent;
         }
         if ((!versionId.empty()) && (verId != versionId))
         {
             continue;
         }
+        if ((active) && (verId.rfind("active") == std::string::npos))
+        {
+            continue;
+        }
+
         DbusProperties data;
         auto getProperties = bus.new_method_call(owner.c_str(), path.c_str(),
                                                  dbus::properties::interface,
@@ -138,6 +159,8 @@ std::map<std::string, Version> getVersions(const std::string& versionId,
                 if (prop == dbus::software::properties::activation)
                 {
                     status = std::get<std::string>(value);
+                    activation =
+                        Activation::convertActivationsFromString(status);
                     const size_t pos = status.find_last_of(".");
                     if (pos != std::string::npos)
                     {
@@ -166,44 +189,83 @@ std::map<std::string, Version> getVersions(const std::string& versionId,
             return std::map<std::string, Version>();
         }
 
-        if ((inventoryItem.empty()) ||
-            ((!target.empty()) && (inventoryItem != target)))
+        if (inventoryItem.empty())
+        {
+            continue;
+        }
+        if (targetId.empty())
+        {
+            targetId = inventoryItem;
+        }
+        else
+        {
+            targetId = inventoryItem + "/" + targetId;
+        }
+
+        if ((!target.empty()) &&
+            (!((target == inventoryItem) || (target == targetId))))
         {
             continue;
         }
         versions[verId].version = ver;
         versions[verId].status = status;
         versions[verId].targets.emplace(inventoryItem);
-        versions[verId].objects.emplace_back(owner, path);
+        versions[verId].objects.emplace_back(targetId, owner, path, ver,
+                                             activation);
     }
     return versions;
 }
 
-bool printVersionsList(const std::string& versionId, const std::string& target)
+bool printVersionsList(const std::string& versionId, const std::string& target,
+                       bool active = false)
 {
-    auto versions = getVersions(versionId, target);
-    fprintf(stdout, "Software package ID\t\tSoftware "
-                    "version\t\t\tStatus\t\tTarget inventory items\n");
+    auto versions = getVersions(versionId, target, active);
+    fprintf(stdout, "%-30s %-38s %-10s\n", "Software package ID",
+            "Software version", "Status");
     for (const auto& [verId, ver] : versions)
     {
-        std::string inventory;
-        for (std::string item : ver.targets)
+        if (ver.version.length() <= 30)
         {
-            if (!inventory.empty())
-            {
-                inventory += ", ";
-            }
-            inventory += item;
-        }
-        if (ver.version.length() <= 35)
-        {
-            fprintf(stdout, "%-24s\t%-35s\t%-10s\t%s\n", verId.c_str(),
-                    ver.version.c_str(), ver.status.c_str(), inventory.c_str());
+            fprintf(stdout, "%-30s %-38s %-10s\n", verId.c_str(),
+                    ver.version.c_str(), ver.status.c_str());
         }
         else
         {
-            fprintf(stdout, "%-24s\t%-.32s...\t%-10s\t%s\n", verId.c_str(),
-                    ver.version.c_str(), ver.status.c_str(), inventory.c_str());
+            fprintf(stdout, "%-30s %-.35s... %-10s\n", verId.c_str(),
+                    ver.version.c_str(), ver.status.c_str());
+        }
+        if (verbose)
+        {
+            for (const auto& [targetId, _, __, ver, activation] : ver.objects)
+            {
+                size_t pos;
+                std::string act =
+                    sdbusplus::message::details::convert_to_string(activation);
+                pos = act.find_last_of(".");
+                if (pos != std::string::npos)
+                {
+                    act.erase(0, pos + 1);
+                }
+
+                fprintf(stdout, " > %-27s %-38s %-10s\n", targetId.c_str(),
+                        active ? ver.c_str() : "", active ? "" : act.c_str());
+            }
+            fprintf(stdout, "\n");
+        }
+        else
+        {
+            std::string inventory;
+            for (std::string item : ver.targets)
+            {
+                if (!inventory.empty())
+                {
+                    inventory += ", ";
+                }
+                inventory += item;
+            }
+
+            fprintf(stdout, "> Target inventory items: %s\n",
+                    inventory.c_str());
         }
     }
 
@@ -229,24 +291,45 @@ bool activateVersions(const std::string& versionId, const std::string& target)
 
     if (!yesMode)
     {
-        fprintf(stdout,
+        if (verbose)
+        {
+            fprintf(
+                stdout,
                 "Followed inventory items would be updated to version '%s':\n",
                 ver.version.c_str());
-        for (const auto& item : ver.targets)
-        {
-            fprintf(stdout, "\t%s\n", item.c_str());
+            for (const auto& item : ver.targets)
+            {
+                fprintf(stdout, "\t%s\n", item.c_str());
+            }
+            fprintf(stdout, "\t(%d targets in total)\n", ver.objects.size());
+            if (!confirm())
+            {
+                return false;
+            }
         }
-        fprintf(stdout, "\t(%d targets in total)\n", ver.objects.size());
-        if (!confirm())
+        else
         {
-            return false;
+            fprintf(stdout, "Firmware would be updated\n");
+            if (!confirm())
+            {
+                return false;
+            }
         }
     }
 
     fprintf(stdout, "Updating started...\n");
-    for (const auto& [owner, path] : ver.objects)
+    for (const auto& [targetId, owner, path, ver, activation] : ver.objects)
     {
-        fprintf(stdout, "set activation for %s\n", path.c_str());
+        if ((activation == SoftwareActivations::Active) ||
+            (activation == SoftwareActivations::Activating))
+        {
+            continue;
+        }
+        if (verbose)
+        {
+            fprintf(stdout, "set activation for %s (%s)\n", targetId.c_str(),
+                    path.c_str());
+        }
         DbusPropVariant data = sdbusplus::message::details::convert_to_string(
             SoftwareRequestedActivations::Active);
         auto setProperty = bus.new_method_call(owner.c_str(), path.c_str(),
@@ -282,15 +365,18 @@ bool activateVersions(const std::string& versionId, const std::string& target)
 static void showUsage(const char* app)
 {
     fprintf(stderr, R"(
-Usage: %s -l|-a [-i <ID>] [-t <item>]
+Usage: %s -l|-s|-a [-i <ID>] [-t <item>] [-vy]
     Tool to work with uploaded software packages.
 Options:
-  -l, --list                    Print list of uploaded software packages.
-  -a, --activate                Activate software package.
-  -i, --version-id <ID>         Select only packages with specific IDs.
-  -t, --target <item>           Select only packages suitable to specified
-                                Inventory Item.
-  -h, --help                    Show this help.
+  -l, --list                Print list of uploaded software packages.
+  -s, --status              Print list of current firmware versions.
+  -a, --activate            Activate software package.
+  -i, --version-id <ID>     Select only packages with specific IDs.
+  -t, --target <item>       Select only packages suitable to specified
+                            Inventory Item or target in Item.
+  -v, --verbose             Show more verbose information.
+  -y, --yes                 Don't ask user for confirmation.
+  -h, --help                Show this help.
 )",
             app);
 }
@@ -298,6 +384,7 @@ Options:
 enum class AppMode
 {
     ModeList,
+    ModeStatus,
     ModeActivate
 };
 
@@ -319,19 +406,25 @@ int main(int argc, char* argv[])
 
     const struct option opts[] = {
         {"list", no_argument, nullptr, 'l'},
+        {"status", no_argument, nullptr, 's'},
         {"activate", no_argument, nullptr, 'a'},
         {"version-id", required_argument, nullptr, 'i'},
         {"target", required_argument, nullptr, 't'},
+        {"verbose", no_argument, nullptr, 'v'},
+        {"yes", no_argument, nullptr, 'y'},
         {"help", no_argument, nullptr, 'h'},
         // --- end of array ---
         {nullptr, 0, nullptr, '\0'}};
     int c;
-    while ((c = getopt_long(argc, argv, "lai:t:h", opts, nullptr)) != -1)
+    while ((c = getopt_long(argc, argv, "lsai:t:vyh", opts, nullptr)) != -1)
     {
         switch (c)
         {
             case 'l':
                 mode = AppMode::ModeList;
+                break;
+            case 's':
+                mode = AppMode::ModeStatus;
                 break;
             case 'a':
                 mode = AppMode::ModeActivate;
@@ -341,6 +434,12 @@ int main(int argc, char* argv[])
                 break;
             case 't':
                 target = optarg;
+                break;
+            case 'v':
+                verbose = true;
+                break;
+            case 'y':
+                yesMode = true;
                 break;
             case 'h':
                 showhelp = true;
@@ -367,6 +466,13 @@ int main(int argc, char* argv[])
     if (mode == AppMode::ModeList)
     {
         if (printVersionsList(versionId, target))
+        {
+            ret = EXIT_SUCCESS;
+        }
+    }
+    else if (mode == AppMode::ModeStatus)
+    {
+        if (printVersionsList(versionId, target, true))
         {
             ret = EXIT_SUCCESS;
         }
