@@ -55,6 +55,12 @@ constexpr const char* interface = "xyz.openbmc_project.ObjectMapper";
 constexpr const char* subtree = "GetSubTree";
 } // namespace mapper
 
+namespace association
+{
+constexpr const char* interface = "xyz.openbmc_project.Association.Definitions";
+constexpr const char* assoc = "Associations";
+} // namespace association
+
 namespace inventory
 {
 constexpr const char* pathBase = "/xyz/openbmc_project/inventory";
@@ -126,13 +132,24 @@ namespace software
 constexpr const char* path = "/xyz/openbmc_project/software";
 constexpr const char* versionIface = "xyz.openbmc_project.Software.Version";
 constexpr const char* filepathIface = "xyz.openbmc_project.Common.FilePath";
+constexpr const char* activationIface =
+    "xyz.openbmc_project.Software.Activation";
+namespace properties
+{
+const static constexpr char* activation = "Activation";
+const static constexpr char* reqActivation = "RequestedActivation";
+const static constexpr char* purpose = "Purpose";
+const static constexpr char* version = "Version";
+} // namespace properties
 } // namespace software
 } // namespace dbus
 
+using Association = std::tuple<std::string, std::string, std::string>;
 using Interface = std::string;
 using PropertyName = std::string;
-using DbusPropVariant = std::variant<uint32_t, uint64_t, bool, double,
-                                     std::string, std::vector<std::string>>;
+using DbusPropVariant =
+    std::variant<uint32_t, uint64_t, bool, double, std::string,
+                 std::vector<std::string>, std::vector<Association>>;
 using DbusProperties = std::map<PropertyName, DbusPropVariant>;
 using ManagedObjectType = std::map<sdbusplus::message::object_path,
                                    std::map<Interface, DbusProperties>>;
@@ -141,7 +158,6 @@ using ObjectPath = std::string;
 using OwnerName = std::string;
 using Interfaces = std::vector<Interface>;
 using SubTreeType = std::map<ObjectPath, std::map<OwnerName, Interfaces>>;
-using Association = std::tuple<std::string, std::string, std::string>;
 
 static std::string dbusEscape(const std::string& str)
 {
