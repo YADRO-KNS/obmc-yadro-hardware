@@ -136,3 +136,14 @@ executable('yadro-mcu-updater',
     ],
     install: true,
 )
+
+executable('yadro-sw-activator',
+    'src/swupd_activator.cpp',
+    include_directories : incdir,
+    cpp_args: cpp_args,
+    dependencies: [
+        sdbusplus_dep,
+        pdi_dep
+    ],
+    install: true,
+)
