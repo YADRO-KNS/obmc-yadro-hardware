@@ -264,6 +264,7 @@ void createInventory(boost::asio::io_service& io,
     }
 
     manager.publish();
+    manager.runDetectFans();
     log<level::DEBUG>("Scan done");
 }
 

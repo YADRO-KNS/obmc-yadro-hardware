@@ -20,7 +20,7 @@ class Chassis : HWManagerChassisServer
 
 using HWManagerFanServer =
     sdbusplus::server::object_t<sdbusplus::com::yadro::HWManager::server::Fan>;
-class Fan : HWManagerFanServer
+class Fan : public HWManagerFanServer
 {
   public:
     Fan(sdbusplus::bus::bus& bus, const std::string& aName,
