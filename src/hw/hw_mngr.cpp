@@ -9,13 +9,149 @@
 #include "objects.hpp"
 #include "product_registry.hpp"
 
+#include <nlohmann/json.hpp>
 #include <phosphor-logging/log.hpp>
 
 #include <charconv>
 #include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <set>
+#include <sstream>
+#include <vector>
+
+using namespace nlohmann;
 
 namespace fs = std::filesystem;
 using namespace phosphor::logging;
+
+namespace fans
+{
+constexpr int maxErrorAttempts = 20;
+const std::string emptyString = "";
+const std::string sysHwmonPath = "/sys/class/hwmon/";
+const std::string sysHwmonFile = "name";
+const std::string sysHwmonContent = "aspeed_pwm_tacho";
+const std::string sysFanPrefixName = "Sys_Fan";
+const std::string sysFanDataFile = "/tmp/fan_features.json";
+
+const FanModuleInfo&
+    getFanInfoByRPM(const std::vector<FanModuleInfo>& detectionFanTable,
+                    uint32_t inletRpm, uint32_t outletRpm)
+{
+    static const FanModuleInfo unknownFanModule = {
+        .type = FanPerformanceType::UNKNOWN};
+
+    for (const auto& item : detectionFanTable)
+    {
+        bool inletRpmMatched =
+            (inletRpm >= item.inletRangeMin && inletRpm <= item.inletRangeMax);
+        bool outletRpmMatched = (outletRpm >= item.outletRangeMin &&
+                                 outletRpm <= item.outletRangeMax);
+
+        if (inletRpmMatched && outletRpmMatched)
+        {
+            return item;
+        }
+    }
+
+    return unknownFanModule;
+}
+
+std::string getFansControlPath()
+{
+    for (const auto& entry : fs::directory_iterator(sysHwmonPath))
+    {
+        auto dirname = entry.path().string() + "/";
+        auto pathname = dirname + sysHwmonFile;
+
+        if (!std::filesystem::exists(pathname))
+        {
+            continue;
+        }
+
+        try
+        {
+            std::ifstream inFile(pathname);
+            std::string content;
+            inFile >> content;
+            content.erase(content.find_last_not_of(" \n\r\t") + 1);
+            if (content == sysHwmonContent)
+            {
+                return dirname;
+            }
+        }
+        catch (...)
+        {
+            std::stringstream ssLog;
+            ssLog << "Fail processing of file: " << pathname;
+            log<level::ERR>(ssLog.str().c_str());
+        }
+    }
+
+    return emptyString;
+}
+
+void setHwmonValue(const std::string& pathname, uint32_t pwmValue)
+{
+    std::stringstream ssLog;
+    if (!std::filesystem::exists(pathname))
+    {
+        ssLog << "File is not exist: " << pathname;
+        log<level::ERR>(ssLog.str().c_str());
+        return;
+    }
+
+    try
+    {
+        std::ofstream outFile(pathname);
+        outFile << pwmValue;
+    }
+    catch (...)
+    {
+        ssLog << "Fail writing to file: " << pathname;
+        log<level::ERR>(ssLog.str().c_str());
+    }
+}
+
+uint32_t getHwmonValue(const std::string& pathname)
+{
+    std::stringstream ssLog;
+    if (!std::filesystem::exists(pathname))
+    {
+        ssLog << "File is not exist: " << pathname;
+        log<level::ERR>(ssLog.str().c_str());
+        return 0;
+    }
+
+    try
+    {
+        std::ifstream inFile(pathname);
+
+        std::stringstream ss;
+        ss << inFile.rdbuf();
+        return std::stoi(ss.str());
+    }
+    catch (...)
+    {
+        ssLog << "Fail reading of file: " << pathname;
+        log<level::ERR>(ssLog.str().c_str());
+    }
+    return 0;
+}
+
+}; // namespace fans
+
+using namespace fans;
+
+HWManager::HWManager(boost::asio::io_service& io, sdbusplus::bus::bus& bus) :
+    io(io), bus(bus), powerState(bus)
+{
+    loadSystemFanFeatures();
+
+    powerState.addCallback("manager", std::bind(&HWManager::onHostPowerChanged,
+                                                this, std::placeholders::_1));
+}
 
 void HWManager::setProduct(const std::string& pname)
 {
@@ -128,6 +264,80 @@ bool HWManager::setOption(const OptionType& optType, const int& instance,
     return true;
 }
 
+FanState HWManager::getDetectFanState()
+{
+    return detectFansState;
+}
+
+void HWManager::publishSystemFans()
+{
+    if (!config.desc)
+    {
+        return;
+    }
+
+    log<level::DEBUG>("HWManager::publishSystemFans()");
+
+    //  remove existing system fans before re-publish
+    for (auto it = fans.begin(); it != fans.end();)
+    {
+        const auto& fan = *it;
+
+        size_t pos = fan->name().find(sysFanPrefixName);
+        if (pos != std::string::npos)
+        {
+            it = fans.erase(it);
+            continue;
+        }
+
+        it++;
+    }
+
+    auto sysFanMod = config.desc->productName + " System Fan";
+    auto sysFanPN = config.desc->sysFanPN;
+
+    std::set<FanPerformanceType> foundFanModuleTypes;
+
+    for (const auto& [conIndex, conDescr] : config.desc->fans)
+    {
+        auto fanIndexStr = std::to_string(conDescr.fanIndex);
+        if (conDescr.type == ConnectorType::SYSTEM)
+        {
+            auto& fan = fanFeatures[conIndex];
+            std::string prettyName = "System Fan " + fanIndexStr;
+            std::string partNumber = sysFanPN;
+
+            if (!fan.prettyName.empty())
+            {
+                prettyName = fan.prettyName;
+            }
+            if (!fan.partNumber.empty())
+            {
+                partNumber = fan.partNumber;
+            }
+
+            foundFanModuleTypes.insert(fan.type);
+
+            fans.emplace_back(std::make_shared<Fan>(
+                bus, sysFanPrefixName + fanIndexStr, prettyName, sysFanMod,
+                partNumber, conDescr.zone, conDescr.connector,
+                conDescr.tachIndexA, conDescr.tachIndexB, conDescr.pwmIndex,
+                conDescr.pwmLimitMax));
+
+            std::stringstream ssLog;
+            ssLog << "FAN: P/N: " << partNumber << " ('" << prettyName << "')";
+            log<level::DEBUG>(ssLog.str().c_str());
+        }
+    }
+
+    if (foundFanModuleTypes.size() > 1)
+    {
+        log<level::WARNING>("Mixed type of FAN modules used");
+    }
+
+    saveSystemFanFeatures();
+}
+
 void HWManager::publish()
 {
     if (!config.desc || configActive == config)
@@ -140,26 +350,16 @@ void HWManager::publish()
     chassis.emplace_back(std::make_shared<Chassis>(
         bus, config.desc->productName, config.chassisModel,
         config.chassisPartNumber, config.chassisSerial));
-    auto sysFanMod = config.desc->productName + " System Fan";
     auto cpuFanMod = config.desc->productName + " CPU Fan";
     auto chsFanMod = config.desc->productName + " Chassis Fan";
-    auto sysFanPN = config.desc->sysFanPN;
     auto cpuFanPN = config.desc->cpuFanPN;
     auto chsFanPN = "CHSFAN000001A";
+
     for (const auto& [conIndex, conDescr] : config.desc->fans)
     {
         auto fanIndexStr = std::to_string(conDescr.fanIndex);
-        if (conDescr.type == ConnectorType::SYSTEM)
+        if ((conDescr.type == ConnectorType::CPU) && config.haveCPUFans)
         {
-            fans.emplace_back(std::make_shared<Fan>(
-                bus, "Sys_Fan" + fanIndexStr, "System Fan " + fanIndexStr,
-                sysFanMod, sysFanPN, conDescr.zone, conDescr.connector,
-                conDescr.tachIndexA, conDescr.tachIndexB, conDescr.pwmIndex,
-                conDescr.pwmLimitMax));
-        }
-        else if ((conDescr.type == ConnectorType::CPU) && config.haveCPUFans)
-        {
-
             auto it = config.cpuPresence.find(conDescr.fanIndex);
             if (it != config.cpuPresence.end() && it->second)
             {
@@ -234,7 +434,21 @@ void HWManager::clear()
 {
     matches.clear();
     chassis.clear();
-    fans.clear();
+
+    //  remove all FANs except System FANs
+    for (auto it = fans.begin(); it != fans.end();)
+    {
+        const auto& fan = *it;
+
+        size_t pos = fan->name().find(sysFanPrefixName);
+        if (pos == std::string::npos)
+        {
+            it = fans.erase(it);
+            continue;
+        }
+
+        it++;
+    }
 }
 
 void HWManager::setFanSpeed()
@@ -356,4 +570,290 @@ void HWManager::setFanSpeedDelayed()
         }
         setFanSpeed();
     });
+}
+
+void HWManager::saveSystemFanFeatures()
+{
+    log<level::DEBUG>("HWManager::saveSystemFanFeatures()");
+
+    std::ofstream ofs(sysFanDataFile);
+    json jsonDoc;
+
+    for (const auto& [fanIndex, fanFeature] : fanFeatures)
+    {
+        json jsonItem;
+        jsonItem["fanIndex"] = fanIndex;
+        jsonItem["partNumber"] = fanFeature.partNumber;
+        jsonItem["prettyName"] = fanFeature.prettyName;
+        jsonItem["type"] = fanFeature.type;
+        jsonDoc.push_back(jsonItem);
+    }
+
+    ofs << std::setw(4) << jsonDoc << std::endl;
+}
+
+void HWManager::loadSystemFanFeatures()
+{
+    log<level::DEBUG>("HWManager::loadSystemFanFeatures()");
+    fanFeatures.clear();
+
+    std::ifstream dataFile(sysFanDataFile);
+    if (!dataFile.is_open())
+    {
+        log<level::DEBUG>("Cannot to open file",
+                          entry("VALUE=%s", sysFanDataFile.c_str()));
+        return;
+    }
+
+    try
+    {
+        json jsonData;
+        dataFile >> jsonData;
+        if (!jsonData.is_array())
+        {
+            log<level::ERR>("Json file has invalid format.",
+                            entry("VALUE=%s", sysFanDataFile.c_str()));
+            return;
+        }
+
+        for (const auto& [itemIndex, jsonItem] : jsonData.items())
+        {
+            int fanIndex = jsonItem["fanIndex"];
+            FanFeature& fan = fanFeatures[fanIndex];
+
+            fan.partNumber = jsonItem["partNumber"];
+            fan.prettyName = jsonItem["prettyName"];
+            fan.type = static_cast<FanPerformanceType>(jsonItem["type"]);
+
+            std::string strLog;
+            strLog = "FAN-" + std::to_string(fanIndex) +
+                     ", type: " + std::to_string(static_cast<int>(fan.type)) +
+                     ", partNumber: " + fan.partNumber +
+                     ", prettyName: " + fan.prettyName;
+            log<level::DEBUG>(strLog.c_str());
+        }
+    }
+    catch (const std::exception& ex)
+    {
+        log<level::ERR>("Failed to read json file",
+                        entry("VALUE=%s", sysFanDataFile.c_str()),
+                        entry("ERROR=%s", ex.what()));
+    }
+}
+
+void HWManager::detectFansDelayed(uint32_t delaySecs)
+{
+    static boost::asio::deadline_timer tmr(io);
+
+    //  if we has expired attempts, then stop fan detection
+    //  and work in normal state
+    if (++numErrorAttempts > maxErrorAttempts)
+    {
+        log<level::ERR>("Reached maxErrorAttempts",
+                        entry("STATE=%d", int(detectFansState)));
+        detectFansState = FanState::normal;
+        return;
+    }
+
+    // this implicitly cancels the timer
+    tmr.expires_from_now(boost::posix_time::seconds(delaySecs));
+    tmr.async_wait([&](const boost::system::error_code& err) {
+        if (err == boost::asio::error::operation_aborted)
+        {
+            /* we were canceled*/
+            return;
+        }
+        else if (err)
+        {
+            log<level::ERR>("Timer error",
+                            entry("WHAT=%s", err.message().c_str()));
+            return;
+        }
+
+        processDetectState();
+    });
+}
+
+void HWManager::onHostPowerChanged(bool powered)
+{
+    if (powered)
+    {
+        log<level::DEBUG>("Host power is ON");
+        numErrorAttempts = 0;
+    }
+    else
+    {
+        log<level::DEBUG>("Host power is OFF");
+    }
+}
+
+void HWManager::runDetectFans()
+{
+    if (detectFansState == FanState::uninit)
+    {
+        if (powerState.isPowerOn())
+        {
+            detectFansState = FanState::init;
+        }
+
+        processDetectState();
+    }
+}
+
+void HWManager::processDetectState()
+{
+    if (detectFansState == FanState::normal)
+    {
+        return;
+    }
+
+    //  wait until createInventory() complete a work
+    if (!config.desc)
+    {
+        detectFansDelayed(5);
+        return;
+    }
+
+    if (detectFansState != FanState::uninit)
+    {
+        if (!processSystemFans())
+        {
+            detectFansState = FanState::normal;
+        }
+    }
+
+    switch (detectFansState)
+    {
+        case FanState::uninit:
+            if (fanFeatures.size() > 0)
+            {
+                detectFansState = FanState::normal;
+            }
+            break;
+        case FanState::init:
+            detectFansState = FanState::detect;
+            detectFansDelayed(5);
+            break;
+        case FanState::detect:
+            updateSystemFanFeatures();
+            detectFansState = FanState::normal;
+            break;
+        default:
+            break;
+    }
+
+    if (detectFansState == FanState::normal)
+    {
+        publishSystemFans();
+    }
+}
+
+bool HWManager::processSystemFans()
+{
+    if (config.desc->detectionFanTable.empty())
+    {
+        return false;
+    }
+
+    std::string path = getFansControlPath();
+    if (path.empty())
+    {
+        return false;
+    }
+
+    std::stringstream ssLog;
+
+    for (const auto& [conIndex, conDescr] : config.desc->fans)
+    {
+        if (conDescr.type != ConnectorType::SYSTEM)
+        {
+            continue;
+        }
+
+        FanFeature& fan = fanFeatures[conIndex];
+        auto pwmPath = path + "pwm" + std::to_string(conDescr.pwmIndex + 1);
+        auto inletPath =
+            path + "fan" + std::to_string(conDescr.tachIndexA + 1) + "_input";
+        auto outletPath =
+            path + "fan" + std::to_string(conDescr.tachIndexB + 1) + "_input";
+
+        switch (detectFansState)
+        {
+            case FanState::init:
+                fan.initialPwm = getHwmonValue(pwmPath);
+                fan.maxInletRpm = getHwmonValue(inletPath);
+                fan.maxOutletRpm = getHwmonValue(outletPath);
+                ssLog << std::to_string(fan.initialPwm) << "; ";
+                if (fan.maxInletRpm > 0 && fan.maxOutletRpm > 0)
+                {
+                    setHwmonValue(pwmPath, 255);
+                }
+                break;
+
+            case FanState::detect:
+                if (fan.maxInletRpm > 0 && fan.maxOutletRpm > 0)
+                {
+                    fan.maxInletRpm = getHwmonValue(inletPath);
+                    fan.maxOutletRpm = getHwmonValue(outletPath);
+                    setHwmonValue(pwmPath, fan.initialPwm);
+                }
+                ssLog << std::to_string(fan.maxInletRpm) << "/"
+                      << std::to_string(fan.maxOutletRpm) << "; ";
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    std::string strLog;
+    if (detectFansState == FanState::init)
+    {
+        strLog = std::string("FAN PWMs: ") + ssLog.str();
+    }
+    else if (detectFansState == FanState::detect)
+    {
+        strLog = std::string("FAN RPMs: ") + ssLog.str();
+    }
+    if (!strLog.empty())
+    {
+        log<level::DEBUG>(strLog.c_str());
+    }
+    return true;
+}
+
+void HWManager::updateSystemFanFeatures()
+{
+    for (const auto& [conIndex, conDescr] : config.desc->fans)
+    {
+        if (conDescr.type != ConnectorType::SYSTEM)
+        {
+            continue;
+        }
+
+        FanFeature& fan = fanFeatures[conIndex];
+
+        const FanModuleInfo& fanInfo = getFanInfoByRPM(
+            config.desc->detectionFanTable, fan.maxInletRpm, fan.maxOutletRpm);
+
+        if (fanInfo.type != FanPerformanceType::UNKNOWN &&
+            !fanInfo.partNumber.empty() && !fanInfo.prettyName.empty())
+        {
+            std::stringstream ssLog;
+            ssLog << "FAN: updated P/N: " << fanInfo.partNumber << " ("
+                  << fanInfo.prettyName << ")";
+            log<level::DEBUG>(ssLog.str().c_str());
+
+            fan.partNumber = fanInfo.partNumber;
+            fan.prettyName = fanInfo.prettyName;
+            fan.type = fanInfo.type;
+        }
+        else
+        {
+            auto fanIndexStr = std::to_string(conDescr.fanIndex);
+
+            fan.partNumber = config.desc->sysFanPN;
+            fan.prettyName = "System Fan " + fanIndexStr;
+        }
+    }
 }
