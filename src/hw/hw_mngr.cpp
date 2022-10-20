@@ -525,6 +525,14 @@ void HWManager::setFanSpeed()
             continue;
         }
 
+        sd_journal_send(
+            "MESSAGE=%s", "Fan PWM minimum changed due to hardware policy",
+            "PRIORITY=%i", LOG_INFO, "ZONE_NAME=%s", zoneName.c_str(),
+            "CUR_VALUE=%0.0f", curValue, "NEW_VALUE=%0.0f", fanMinSpeed,
+            "REDFISH_MESSAGE_ID=%s", "OpenBMC.0.1.FanMinPwmRestricted",
+            "REDFISH_MESSAGE_ARGS=%s,%0.0f,%0.0f", zoneName.c_str(), curValue,
+            fanMinSpeed, NULL);
+
         data = fanMinSpeed;
         auto setProperty = bus.new_method_call(owner.c_str(), path.c_str(),
                                                dbus::properties::interface,
