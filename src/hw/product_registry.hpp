@@ -367,6 +367,16 @@ static const std::map<size_t, FanConDescription> FanConnectorsR220G2 = {
       .tachIndexB = 0,
       .pwmIndex = 6}},
 };
+static const std::map<size_t, FanConDescription> FanConnectorsNicoleX86 = {
+    {1,
+     {.type = ConnectorType::SYSTEM,
+      .fanIndex = 5,
+      .connector = "Fan5",
+      .zone = "Main",
+      .tachIndexA = 5,
+      .tachIndexB = 0,
+      .pwmIndex = 5}},
+};
 
 enum class FanPerformanceType
 {
@@ -454,4 +464,8 @@ static const std::vector<ProductDescription> productRegistry = {
      .productName = "TATLIN.ARCHIVE.S",
      .fans = FanConnectorsS320,
      .sysFanPN = "ASMFAN781103A",
-     .cpuFanPN = "CPUHSN792004A"}};
+     .cpuFanPN = "CPUHSN792004A"},
+    {.pnameRegex = std::regex("TATLIN.UNIFIED Gen2.*"),
+     .productName = "TATLIN.UNIFIED Gen2",
+     .fans = FanConnectorsNicoleX86,
+     .sysFanPN = "NODE_SYS_FAN"}};
