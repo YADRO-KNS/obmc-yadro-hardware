@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <iostream>
 #include <string>
 
 extern "C"
@@ -72,12 +73,15 @@ class i2cDev
     }
 
     static constexpr int i2cBlockSize = I2C_SMBUS_BLOCK_MAX;
+    static bool verbose;
 
   private:
     int devFD;
     int i2cAddr;
     bool ok;
     std::string deviceLabel;
+
+    bool isSpamingToLog(int res, std::stringstream& ss);
 
     /**
      * @brief Log transaction with device

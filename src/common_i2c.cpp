@@ -15,9 +15,30 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <limits>
+#include <map>
+#include <utility>
 
 using namespace phosphor::logging;
 static constexpr int retryCount = 3;
+
+bool i2cDev::verbose = false;
+
+//  each i2cDev object can be recreated; but we need permanent context
+struct I2cContext
+{
+    uint32_t  numLogErrors{0};
+};
+
+using MyKey = std::pair<std::string, int>;
+using MyMap = std::map<MyKey, I2cContext>;
+
+static I2cContext& getI2cContext(const std::string& devId, int addr)
+{
+    static MyMap contexts;
+    auto key = std::make_pair(devId, addr);
+    return contexts[key];
+}
 
 i2cDev::i2cDev(std::string devPath, int addr, bool usePEC) :
     devFD(-1), i2cAddr(addr), ok(false)
@@ -290,6 +311,33 @@ int i2cDev::i2c_transfer(uint8_t tx_len, uint8_t* tx_data, uint8_t rx_len,
     return res;
 }
 
+bool i2cDev::isSpamingToLog(int res, std::stringstream& ss)
+{
+    I2cContext& context = getI2cContext(deviceLabel, i2cAddr);
+    auto& numLogErrors = context.numLogErrors;
+
+    const uint32_t maxLogErrors = 3;
+
+    if (res > 0)
+    {
+        numLogErrors = 0;
+        return false;
+    }
+
+    if (numLogErrors == maxLogErrors)
+    {
+        ss << "... (Detected multiple errors. Stoping spam to log.)";
+        log<level::ERR>(ss.str().c_str());
+    }
+
+    if (numLogErrors < std::numeric_limits<uint32_t>::max())
+    {
+        numLogErrors++;
+    }
+
+    return (numLogErrors > maxLogErrors);
+}
+
 void i2cDev::logTransfer(int cmd, const void* txData, size_t txDataLen,
                          const void* rxData, size_t rxDataLen, int res)
 {
@@ -303,6 +351,13 @@ void i2cDev::logTransfer(int cmd, const void* txData, size_t txDataLen,
     {
         ss << " <FAILED (" << std::setw(1) << std::dec << res << ")!>";
     }
+
+    //  stop spaming to log on multiple errors
+    if (!i2cDev::verbose && isSpamingToLog(res, ss))
+    {
+        return;
+    }
+
     if (cmd >= 0)
     {
         ss << " CMD: " << std::setfill('0') << std::setw(2) << std::hex
@@ -331,12 +386,12 @@ void i2cDev::logTransfer(int cmd, const void* txData, size_t txDataLen,
         }
     }
 
-    if (res >= 0)
-    {
-        log<level::DEBUG>(ss.str().c_str());
-    }
-    else
+    if (res < 0)
     {
         log<level::ERR>(ss.str().c_str());
+    }
+    else if (i2cDev::verbose)
+    {
+        log<level::DEBUG>(ss.str().c_str());
     }
 }
