@@ -66,9 +66,14 @@ class i2cDev
     int i2c_transfer(uint8_t tx_len, uint8_t* tx_data, uint8_t rx_len,
                      uint8_t* rx_data);
 
-    std::string getDevLabel()
+    std::string getDevLabel() const
     {
         return deviceLabel;
+    }
+
+    int getAddr() const
+    {
+        return i2cAddr;
     }
 
     static constexpr int i2cBlockSize = I2C_SMBUS_BLOCK_MAX;
