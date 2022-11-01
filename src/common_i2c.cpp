@@ -15,9 +15,12 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 
 using namespace phosphor::logging;
 static constexpr int retryCount = 3;
+
+bool i2cDev::verbose = false;
 
 i2cDev::i2cDev(std::string devPath, int addr, bool usePEC) :
     devFD(-1), i2cAddr(addr), ok(false)
@@ -290,6 +293,29 @@ int i2cDev::i2c_transfer(uint8_t tx_len, uint8_t* tx_data, uint8_t rx_len,
     return res;
 }
 
+bool i2cDev::isSpamingToLog(int res, std::stringstream& ss)
+{
+    const decltype(numLogErrors) maxLogErrors = 3;
+    if (res > 0)
+    {
+        numLogErrors = 0;
+        return false;
+    }
+
+    if (numLogErrors == maxLogErrors)
+    {
+        ss << "... (Detected multiple errors. Stoping spam to log.)";
+        log<level::ERR>(ss.str().c_str());
+    }
+
+    if (numLogErrors < std::numeric_limits<decltype(numLogErrors)>::max())
+    {
+        numLogErrors++;
+    }
+
+    return (numLogErrors > maxLogErrors);
+}
+
 void i2cDev::logTransfer(int cmd, const void* txData, size_t txDataLen,
                          const void* rxData, size_t rxDataLen, int res)
 {
@@ -303,6 +329,13 @@ void i2cDev::logTransfer(int cmd, const void* txData, size_t txDataLen,
     {
         ss << " <FAILED (" << std::setw(1) << std::dec << res << ")!>";
     }
+
+    //  stop spaming on multiple logs
+    if (isSpamingToLog(res, ss))
+    {
+        return;
+    }
+
     if (cmd >= 0)
     {
         ss << " CMD: " << std::setfill('0') << std::setw(2) << std::hex
@@ -331,12 +364,12 @@ void i2cDev::logTransfer(int cmd, const void* txData, size_t txDataLen,
         }
     }
 
-    if (res >= 0)
-    {
-        log<level::DEBUG>(ss.str().c_str());
-    }
-    else
+    if (res < 0)
     {
         log<level::ERR>(ss.str().c_str());
+    }
+    else if (i2cDev::verbose)
+    {
+        log<level::DEBUG>(ss.str().c_str());
     }
 }
