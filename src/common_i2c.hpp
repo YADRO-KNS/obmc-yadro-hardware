@@ -80,7 +80,6 @@ class i2cDev
     int i2cAddr;
     bool ok;
     std::string deviceLabel;
-    uint32_t numLogErrors{0};
 
     bool isSpamingToLog(int res, std::stringstream& ss);
 

@@ -16,11 +16,29 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <map>
+#include <utility>
 
 using namespace phosphor::logging;
 static constexpr int retryCount = 3;
 
 bool i2cDev::verbose = false;
+
+//  each i2cDev object can be recreated; but we need permanent context
+struct I2cContext
+{
+    uint32_t  numLogErrors{0};
+};
+
+using I2cContextKey = std::pair<std::string, int>;
+using I2cContextMap = std::map<I2cContextKey, I2cContext>;
+
+static I2cContext& getI2cContext(const std::string& devId, int addr)
+{
+    static I2cContextMap contexts;
+    auto key = std::make_pair(devId, addr);
+    return contexts[key];
+}
 
 i2cDev::i2cDev(std::string devPath, int addr, bool usePEC) :
     devFD(-1), i2cAddr(addr), ok(false)
@@ -295,7 +313,11 @@ int i2cDev::i2c_transfer(uint8_t tx_len, uint8_t* tx_data, uint8_t rx_len,
 
 bool i2cDev::isSpamingToLog(int res, std::stringstream& ss)
 {
-    const decltype(numLogErrors) maxLogErrors = 3;
+    I2cContext& context = getI2cContext(deviceLabel, i2cAddr);
+    auto& numLogErrors = context.numLogErrors;
+
+    const uint32_t maxLogErrors = 3;
+
     if (res > 0)
     {
         numLogErrors = 0;
@@ -308,7 +330,7 @@ bool i2cDev::isSpamingToLog(int res, std::stringstream& ss)
         log<level::ERR>(ss.str().c_str());
     }
 
-    if (numLogErrors < std::numeric_limits<decltype(numLogErrors)>::max())
+    if (numLogErrors < std::numeric_limits<uint32_t>::max())
     {
         numLogErrors++;
     }
@@ -330,8 +352,8 @@ void i2cDev::logTransfer(int cmd, const void* txData, size_t txDataLen,
         ss << " <FAILED (" << std::setw(1) << std::dec << res << ")!>";
     }
 
-    //  stop spaming on multiple logs
-    if (isSpamingToLog(res, ss))
+    //  stop spaming to log on multiple errors
+    if (!i2cDev::verbose && isSpamingToLog(res, ss))
     {
         return;
     }
