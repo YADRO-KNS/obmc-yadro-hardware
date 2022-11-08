@@ -21,6 +21,10 @@
 using namespace phosphor::logging;
 static constexpr int retryCount = 3;
 
+//  false - reduces multiple errors and disables debug messages
+//  true - allows multiple errors and debug messages
+bool i2cDev::verbose = false;
+
 //  each i2cDev object can be recreated; but we need permanent context
 struct I2cContext
 {
@@ -340,7 +344,7 @@ void i2cDev::logTransfer(int cmd, const void* txData, size_t txDataLen,
                          const void* rxData, size_t rxDataLen, int res)
 {
     //  stop spaming to log on multiple errors
-    if (isSpamingToLog(*this, res))
+    if (!i2cDev::verbose && isSpamingToLog(*this, res))
     {
         return;
     }
@@ -383,11 +387,11 @@ void i2cDev::logTransfer(int cmd, const void* txData, size_t txDataLen,
         }
     }
 
-    if (res >= 0)
+    if (res >= 0 && i2cDev::verbose)
     {
         log<level::DEBUG>(ss.str().c_str());
     }
-    else
+    else if (res < 0)
     {
         log<level::ERR>(ss.str().c_str());
     }
