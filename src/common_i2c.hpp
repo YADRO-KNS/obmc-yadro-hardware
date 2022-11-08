@@ -77,6 +77,7 @@ class i2cDev
     }
 
     static constexpr int i2cBlockSize = I2C_SMBUS_BLOCK_MAX;
+    static bool verbose;
 
   private:
     int devFD;

@@ -7,11 +7,14 @@
 #include "com/yadro/HWManager/StorageManager/server.hpp"
 #include "com/yadro/Inventory/Manager/server.hpp"
 #include "common.hpp"
+#include "common_i2c.hpp"
 #include "common_swupd.hpp"
 #include "dbus.hpp"
 #include "inventory.hpp"
 #include "xyz/openbmc_project/Common/error.hpp"
 #include "xyz/openbmc_project/Software/Version/server.hpp"
+
+#include <getopt.h>
 
 #include <boost/algorithm/string.hpp>
 #include <phosphor-logging/log.hpp>
@@ -487,13 +490,43 @@ static void signalHandler(sdeventplus::source::Signal& source,
     source.get_event().exit(EXIT_SUCCESS);
 }
 
+static void showUsage(char* appName)
+{
+    fprintf(stderr, R"(Usage: %s [options]
+Options:
+  -v, --verbose  Enable output debug messages.
+  -h, --help     Show this help
+)",
+            appName);
+}
+
 /**
  * @brief Application entry point
  *
  * @return exit status
  */
-int main()
+int main(int argc, char** argv)
 {
+    const struct option opts[] = {
+        {"verbose", no_argument, nullptr, 'v'},
+        {"help", no_argument, nullptr, 'h'},
+        {nullptr, 0, nullptr, '\0'}};
+    int c;
+    while ((c = getopt_long(argc, argv, "v:h", opts, nullptr)) != -1)
+    {
+        switch (c)
+        {
+            case 'v':
+                i2cDev::verbose = true;
+                break;
+            case 'h':
+                showUsage(argv[0]);
+                return 0;
+            default:
+                break;
+        }
+    }
+
     sigset_t ss;
 
     if (sigemptyset(&ss) < 0 || sigaddset(&ss, SIGTERM) < 0 ||
