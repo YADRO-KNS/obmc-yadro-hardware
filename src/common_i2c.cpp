@@ -317,7 +317,7 @@ static bool isSpamingToLog(const i2cDev& dev, int res)
     I2cContext& context = getI2cContext(dev);
     auto& numLogErrors = context.numLogErrors;
 
-    if (res > 0)
+    if (res >= 0)
     {
         numLogErrors = 0;
         return false;
