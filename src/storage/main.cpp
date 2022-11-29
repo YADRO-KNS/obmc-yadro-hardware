@@ -512,7 +512,7 @@ int main(int argc, char** argv)
         {"help", no_argument, nullptr, 'h'},
         {nullptr, 0, nullptr, '\0'}};
     int c;
-    while ((c = getopt_long(argc, argv, "v:h", opts, nullptr)) != -1)
+    while ((c = getopt_long(argc, argv, "vh", opts, nullptr)) != -1)
     {
         switch (c)
         {
