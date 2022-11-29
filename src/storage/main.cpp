@@ -533,14 +533,14 @@ int main(int argc, char** argv)
         sigaddset(&ss, SIGINT) < 0 || sigaddset(&ss, SIGCHLD) < 0)
     {
         log<level::ERR>("ERROR: Failed to setup signal handlers",
-                        entry("REASON=%d", strerror(errno)));
+                        entry("REASON=%s", strerror(errno)));
         return EXIT_FAILURE;
     }
 
     if (sigprocmask(SIG_BLOCK, &ss, nullptr) < 0)
     {
         log<level::ERR>("ERROR: Failed to block signals",
-                        entry("REASON=%d", strerror(errno)));
+                        entry("REASON=%s", strerror(errno)));
         return EXIT_FAILURE;
     }
 
