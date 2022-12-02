@@ -42,6 +42,11 @@ const FanModuleInfo&
     static const FanModuleInfo unknownFanModule = {
         .type = FanPerformanceType::UNKNOWN};
 
+    if (inletRpm && outletRpm && inletRpm < outletRpm)
+    {
+        std::swap(inletRpm, outletRpm);
+    }
+
     for (const auto& item : detectionFanTable)
     {
         bool inletRpmMatched =
