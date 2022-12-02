@@ -327,7 +327,7 @@ void HWManager::publishSystemFans()
                 bus, sysFanPrefixName + fanIndexStr, prettyName, sysFanMod,
                 partNumber, conDescr.zone, conDescr.connector,
                 conDescr.tachIndexA, conDescr.tachIndexB, conDescr.pwmIndex,
-                conDescr.pwmLimitMax));
+                conDescr.pwmLimitMax, conDescr.presencePinName));
 
             std::stringstream ssLog;
             ssLog << "FAN: P/N: " << partNumber << " ('" << prettyName << "')";
@@ -373,7 +373,7 @@ void HWManager::publish()
                     "CPU" + fanIndexStr + " Fan", cpuFanMod, cpuFanPN,
                     conDescr.zone, conDescr.connector, conDescr.tachIndexA,
                     conDescr.tachIndexB, conDescr.pwmIndex,
-                    conDescr.pwmLimitMax));
+                    conDescr.pwmLimitMax, ""));
             }
         }
     }
@@ -409,7 +409,7 @@ void HWManager::publish()
                 bus, "Cha_Fan" + fanIndexStr, "Chassis Fan " + fanIndexStr,
                 chsFanMod, chsFanPN, zoneName, it->second.connector,
                 it->second.tachIndexA, it->second.tachIndexB,
-                it->second.pwmIndex, it->second.pwmLimitMax));
+                it->second.pwmIndex, it->second.pwmLimitMax, ""));
             chassisFanIndex++;
         }
     }

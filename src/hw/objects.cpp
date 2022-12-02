@@ -25,7 +25,7 @@ Fan::Fan(sdbusplus::bus::bus& bus, const std::string& aName,
          const std::string& aPartNumber, const std::string& aZone,
          const std::string& aConnector, const uint32_t& aTachIndexA,
          const uint32_t& aTachIndexB, const uint32_t& aPwmIndex,
-         const uint32_t& aPwmLimitMax) :
+         const uint32_t& aPwmLimitMax, const std::string& aPresencePinName) :
     HWManagerFanServer(
         bus,
         dbusEscape(std::string(dbus::hwmgr::path) + "/fan/" + aName).c_str())
@@ -50,4 +50,5 @@ Fan::Fan(sdbusplus::bus::bus& bus, const std::string& aName,
     {
         pwmLimitMax(aPwmLimitMax);
     }
+    presencePinName(aPresencePinName);
 }

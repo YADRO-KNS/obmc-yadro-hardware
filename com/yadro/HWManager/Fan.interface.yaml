@@ -52,3 +52,10 @@ properties:
         - readonly
       description: >
           Upper speed limit for Fan PWM, 30..100%
+    - name: presencePinName
+      type: string
+      default: ''
+      flags:
+        - readonly
+      description: >
+          The name of presence gpio pin
