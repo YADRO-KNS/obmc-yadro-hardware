@@ -11,8 +11,10 @@ project('obmc-yadro-hardware', 'cpp',
 boost = dependency('boost', required: true)
 sdbusplus_dep = dependency('sdbusplus', required: true)
 sdeventplus_dep = dependency('sdeventplus', required: true)
+phosphor_logging_dep = dependency('phosphor-logging')
 pdi_dep = dependency('phosphor-dbus-interfaces', required: true)
 i2c = meson.get_compiler('cpp').find_library('i2c')
+gpiod_dep = dependency('libgpiodcxx')
 
 sdbusplusplus_prog = find_program('sdbus++')
 sdbusgen_prog = find_program('sdbus++-gendir')
@@ -136,6 +138,27 @@ executable('yadro-mcu-updater',
         i2c
     ],
     install: true,
+)
+
+executable('yadro-mcu-reflash',
+  [
+    'src/mcu/reflash.cpp',
+    'src/mcu/backplane_mcu_driver.cpp',
+    'src/mcu/backplane_mcu_driver_v0.cpp',
+    'src/mcu/backplane_mcu_driver_v1.cpp',
+    'src/common/mmapfile.cpp',
+    'src/common.cpp',
+    'src/common_i2c.cpp',
+  ],
+  include_directories : incdir,
+  cpp_args: cpp_args,
+  dependencies: [
+    phosphor_logging_dep,
+    i2c,
+    gpiod_dep,
+    nlohmann_json,
+  ],
+  install: true,
 )
 
 executable('yadro-sw-activator',
