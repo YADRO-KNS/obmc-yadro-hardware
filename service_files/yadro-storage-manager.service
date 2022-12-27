@@ -6,6 +6,7 @@ Type=dbus
 BusName=com.yadro.Storage
 Restart=always
 RestartSec=5
+ExecStartPre=/usr/bin/yadro-mcu-reflash /usr/share/obmc-yadro-hw/backplanes.json
 ExecStart=/usr/bin/yadro-storage-manager
 
 [Install]
