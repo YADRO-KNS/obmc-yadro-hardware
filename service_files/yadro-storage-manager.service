@@ -1,5 +1,7 @@
 [Unit]
 Description=Storage manager service
+Requires=xyz.openbmc_project.ObjectMapper.service
+After=xyz.openbmc_project.ObjectMapper.service
 
 [Service]
 Type=dbus
