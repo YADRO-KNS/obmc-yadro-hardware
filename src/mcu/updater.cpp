@@ -15,6 +15,7 @@
 
 #define EXIT_UPDATE_FAILED 10
 static bool showProgress = false;
+static bool forceErase = false;
 
 /**
  * @brief Invoke backplane MCU firmware update
@@ -71,33 +72,51 @@ bool runImageUpdate(std::string& imagePath, std::string& i2cBusDev, int i2cAddr,
 )",
                     devType.c_str(), fwVer.c_str(), expectedVersion.c_str(),
                     imagePath.c_str());
-
-            fprintf(stdout, "Erase MCU fw update flash area...\n");
         }
-        mcu->eraseFlash();
-        std::this_thread::sleep_for(std::chrono::seconds(2));
+
+        if (forceErase)
+        {
+            if (showProgress)
+            {
+                fprintf(stdout, "Erase MCU fw update flash area...\n");
+            }
+            mcu->eraseFlash();
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+        }
 
         static constexpr size_t chunkSize =
             128; // max chunk size is 255 bytes, but it shall be 4-byte aligned
         std::array<char, chunkSize> buf;
         size_t bytesRead = 0;
-        while (file.good() && !file.eof())
+        try
         {
-            file.read(buf.data(), buf.size());
-            size_t bytes = file.gcount();
-            if (bytes == 0)
+            while (file.good() && !file.eof())
             {
-                break;
+                file.read(buf.data(), buf.size());
+                size_t bytes = file.gcount();
+                if (bytes == 0)
+                {
+                    break;
+                }
+                mcu->writeFlash(buf.data(), bytes);
+                bytesRead += bytes;
+                float progress = (bytesRead * 100.0) / imageSize;
+                if (showProgress)
+                {
+                    fprintf(stdout,
+                            "wrote %.2f%% (%d of %d bytes, chunk size %d)\n",
+                            progress, bytesRead, imageSize, bytes);
+                }
             }
-            mcu->writeFlash(buf.data(), bytes);
-            bytesRead += bytes;
-            float progress = (bytesRead * 100.0) / imageSize;
-            if (showProgress)
+        }
+        catch (...)
+        {
+            if (!forceErase)
             {
-                fprintf(stdout,
-                        "wrote %.2f%% (%d of %d bytes, chunk size %d)\n",
-                        progress, bytesRead, imageSize, bytes);
+                // NOTE: Enforces the MCU's boot loader to clean the flash up.
+                mcu->reboot();
             }
+            throw;
         }
 
         mcu->reboot();
@@ -157,12 +176,13 @@ bool runImageUpdate(std::string& imagePath, std::string& i2cBusDev, int i2cAddr,
 static void showUsage(const char* app)
 {
     fprintf(stderr, R"(
-Usage: %s [-pB] -f <path> -b <device path> -a <addr> [-v <version>] [-d <object>]
+Usage: %s [-pE] -f <path> -b <device path> -a <addr> [-v <version>] [-d <object>]
     Update backplane MCU firmware.
 Options:
   -f, --file <path>         Firmware image binary file path.
   -b, --bus <device path>   Path to I2C bus device (e.g. /dev/i2c-1).
   -a, --addr <addr>         I2C device address of the target MCU.
+  -E, --force-erase         Send erase-flash command to MCU.
   -v, --version <version>   Version of the new software image. If specified
                             will be compared after flashing to ensure update
                             succeed.
@@ -189,13 +209,14 @@ int main(int argc, char* argv[])
     const struct option opts[] = {{"file", required_argument, nullptr, 'f'},
                                   {"bus", required_argument, nullptr, 'b'},
                                   {"addr", required_argument, nullptr, 'a'},
+                                  {"force-erase", no_argument, nullptr, 'E'},
                                   {"version", required_argument, nullptr, 'v'},
                                   {"progress", no_argument, nullptr, 'p'},
                                   {"help", no_argument, nullptr, 'h'},
                                   // --- end of array ---
                                   {nullptr, 0, nullptr, '\0'}};
     int c;
-    while ((c = getopt_long(argc, argv, "f:b:a:v:ph", opts, nullptr)) != -1)
+    while ((c = getopt_long(argc, argv, "f:b:a:v:eph", opts, nullptr)) != -1)
     {
         switch (c)
         {
@@ -215,6 +236,9 @@ int main(int argc, char* argv[])
                             i2cAddr);
                     showhelp = true;
                 }
+                break;
+            case 'E':
+                forceErase = true;
                 break;
             case 'v':
                 expectedVersion = optarg;
