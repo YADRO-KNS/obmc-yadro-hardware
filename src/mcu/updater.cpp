@@ -39,6 +39,36 @@ bool runImageUpdate(std::string& imagePath, std::string& i2cBusDev, int i2cAddr,
 {
     try
     {
+        printf("Using MCU at %s, addr 0x%02X\n", i2cBusDev.c_str(), i2cAddr);
+
+        auto mcu = backplaneMCU(i2cBusDev, i2cAddr);
+        auto fwVer = mcu->getFwVersion();
+        auto devType = mcu->getBoardType();
+        if (showProgress)
+        {
+
+            fprintf(stdout, R"(
+  Device type:              %s
+  Current firmware version: %s
+)",
+                    devType.c_str(), fwVer.c_str());
+        }
+
+        if (forceErase)
+        {
+            if (showProgress)
+            {
+                fprintf(stdout, "Erase MCU fw update flash area...\n");
+            }
+            mcu->eraseFlash();
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+        }
+
+        if (imagePath.empty())
+        {
+            return true;
+        }
+
         size_t imageSize = std::filesystem::file_size(imagePath);
         static constexpr size_t minImageSize =
             64; // image can't be less then 64 bytes (header size)
@@ -57,31 +87,14 @@ bool runImageUpdate(std::string& imagePath, std::string& i2cBusDev, int i2cAddr,
                     imagePath.c_str());
             return false;
         }
-        auto mcu = backplaneMCU(i2cBusDev, i2cAddr);
-        auto fwVer = mcu->getFwVersion();
-        auto devType = mcu->getBoardType();
-
         if (showProgress)
         {
 
             fprintf(stdout, R"(
-  Device type:              %s
-  Current firmware version: %s
   New firmware version:     %s
   Firmware image path:      %s
 )",
-                    devType.c_str(), fwVer.c_str(), expectedVersion.c_str(),
-                    imagePath.c_str());
-        }
-
-        if (forceErase)
-        {
-            if (showProgress)
-            {
-                fprintf(stdout, "Erase MCU fw update flash area...\n");
-            }
-            mcu->eraseFlash();
-            std::this_thread::sleep_for(std::chrono::seconds(2));
+                    expectedVersion.c_str(), imagePath.c_str());
         }
 
         static constexpr size_t chunkSize =
@@ -260,11 +273,6 @@ int main(int argc, char* argv[])
         showUsage(argv[0]);
         return EXIT_FAILURE;
     }
-    if (firmwareFile.empty())
-    {
-        fprintf(stderr, "--file option must be specified!\n");
-        return EXIT_FAILURE;
-    }
     if (i2cBusDev.empty())
     {
         fprintf(stderr, "--bus option must be specified!\n");
@@ -276,11 +284,9 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
-    printf("Update firmware in MCU at %s, addr 0x%02X\n", i2cBusDev.c_str(),
-           i2cAddr);
     if (runImageUpdate(firmwareFile, i2cBusDev, i2cAddr, expectedVersion))
     {
-        fprintf(stdout, "Firmware updated!\n");
+        fprintf(stdout, "Done!\n");
         ret = EXIT_SUCCESS;
     }
     else
