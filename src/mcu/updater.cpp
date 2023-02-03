@@ -229,7 +229,7 @@ int main(int argc, char* argv[])
                                   // --- end of array ---
                                   {nullptr, 0, nullptr, '\0'}};
     int c;
-    while ((c = getopt_long(argc, argv, "f:b:a:v:eph", opts, nullptr)) != -1)
+    while ((c = getopt_long(argc, argv, "f:b:a:v:Eph", opts, nullptr)) != -1)
     {
         switch (c)
         {
