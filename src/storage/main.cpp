@@ -371,6 +371,13 @@ void Manager::softwareAdded(sdbusplus::message::message& msg)
  */
 void Manager::rescan()
 {
+    if (!fs::exists(storageDataFile))
+    {
+        log<level::DEBUG>("Storage date file does not exists",
+                          entry("PATH=%s", storageDataFile));
+        return;
+    }
+
     std::ifstream dataFile(storageDataFile);
     std::string line;
     if (!dataFile.is_open())
